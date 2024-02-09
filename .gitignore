@@ -1,0 +1,35 @@
+# Byte-compiled / optimized Python files
+__pycache__/
+*.pyc
+*.pyo
+__pycache__/
+*.pyc
+*.pyo
+
+# Compiled C extensions
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Virtual environment
+venv/
+env/
+_envnix/
+
+# IDE-specific files and directories (e.g., for Visual Studio Code, PyCharm, etc.)
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Developer only
+downloads/
