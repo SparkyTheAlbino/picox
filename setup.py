@@ -14,11 +14,3 @@ setup(
         ],
     },
 )
-    # Additional metadata about your package
-    author='Harvey Sparkes',
-    author_email='',
-    description='CLI tools for Raspberry Pi Pico',
-    license='MIT',
-    keywords='Raspberry Pi, Pico, Serial',
-    url='',
-)
