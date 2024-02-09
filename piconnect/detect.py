@@ -5,6 +5,7 @@ import platform
 
 def get_serial_ports():
     if platform.system() == "Windows":
+        # TODO Fix windows
         ports = serial.tools.list_ports.comports()
         return [port.device for port in ports]
     elif platform.system() == "Linux":
@@ -20,5 +21,5 @@ def is_pico(device):
             ser.write(b"Hello Pi Pico\r\n")
             response = ser.readline()
             return "Pi Pico" in response.decode()
-    except (Exception) as e:
+    except Exception as e:
         return False

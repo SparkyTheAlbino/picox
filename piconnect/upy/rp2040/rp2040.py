@@ -130,12 +130,12 @@ class RP2040:
         local_data = local_fp.read()
 
         # Upload the file to the pico
-        response = self._communicate(
+        self._communicate(
             f'with open("{pico_file_path}", "wb") as f: f.write({local_data})',
             block_command=True
         )
 
     def execute_file(self, file_name):
-        print(f"EEEEExecuting file {file_name}")
+        print(f"Executing file {file_name}")
         self.stop_exec()
         return self._communicate(f'exec(open("{file_name}").read())', ignore_response=True)
