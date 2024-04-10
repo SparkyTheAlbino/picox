@@ -5,7 +5,6 @@ import re
 from enum import Enum
 from typing import IO
 from itertools import cycle
-import serial_asyncio
 
 TERMINATOR = '\r\n'     # Newlines, for terminating a message or simulating an "enter"
 MPY_PROMPT = "\r\n>>>"  # New prompt, for looking when serial coms is finsihed
@@ -27,17 +26,23 @@ class RP2040:
                  start_closed=False, 
                  verbose=False,
                  serial_read_timeout=15,
+                 serial_write_timeout=1,
                  ):
         self.verbose = verbose
         self._serial_read_timeout = serial_read_timeout
-        self._mpy_version = micropython_version
+        self._upy_version = micropython_version
         self._serial_port = serial_port
         self._serial = None
         if not start_closed:
             self._open_serial()
 
     def _open_serial(self):
-        self._serial = serial.Serial(self._serial_port, 115200, timeout=self._serial_read_timeout)
+        self._serial = serial.Serial(
+            self._serial_port, 
+            115200, 
+            timeout=self._serial_read_timeout,
+            write_timeout=0.5
+        )
 
     def _serial_read(self, eor_token=EOR_TOKEN) -> bytearray:
         response = self._serial.read_until(eor_token.encode("utf8")).strip()

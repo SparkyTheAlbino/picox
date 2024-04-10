@@ -5,21 +5,20 @@ import platform
 from .upy.rp2040 import RP2040
 
 def get_serial_ports():
-    if platform.system() == "Windows":
-        # TODO Fix windows
-        ports = serial.tools.list_ports.comports()
-        return [port.device for port in ports]
-    elif platform.system() == "Linux":
-        # TODO Test Linux
-        return glob.glob('/dev/ttyACM*')
-    elif platform.system() == "Darwin":
-        return glob.glob('/dev/tty.usb*')
-    else:
-        raise NotImplementedError("Unsupported OS")
+    match platform.system():
+        case "Windows":
+            ports = serial.tools.list_ports.comports()
+            return [port.device for port in ports if "USB Serial Device" in port.description]
+        case "Linux":
+            return glob.glob('/dev/ttyACM*')
+        case "Darwin":
+            glob.glob('/dev/tty.usb*')
+        case _:
+            raise NotImplementedError("Unsupported OS")
 
 def is_pico(device):
     try:
-        pico = RP2040(device)
+        pico = RP2040(device, serial_read_timeout=1, serial_write_timeout=1)
         pico.stop_exec()
         pico.send_enter()
         return pico.coms_test()
