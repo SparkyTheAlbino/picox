@@ -2,15 +2,16 @@ import serial
 import ast
 import time
 import re
+import platform
 from enum import Enum
 from typing import IO
 from itertools import cycle
 
 TERMINATOR = '\r\n'     # Newlines, for terminating a message or simulating an "enter"
-MPY_PROMPT = "\r\n>>>"  # New prompt, for looking when serial coms is finsihed
+UPY_PROMPT = "\r\n>>>"  # New prompt, for looking when serial coms is finsihed
 BLOCK_PROMPT = "..."   # Block command prompt
 EOR_MARKER = "---f81b734f-7be3-4747-ae0b-c449006b33dd---" # A Special tag to aid finding the end of response
-EOR_TOKEN  = f"{EOR_MARKER}{MPY_PROMPT}" # Token to look for to end reading from serial
+EOR_TOKEN  = f"{EOR_MARKER}{UPY_PROMPT}" # Token to look for to end reading from serial
 EOR_MARKER_COMMAND = f";print('{EOR_MARKER}')" # Add this to ensure the special tag is printed at the end of the response
 EOM_MARKER = f';pass;pass;pass;pass{EOR_MARKER_COMMAND}' # End of message marker to remove it easily from the response
 RE_MATCH_BACKSPACE_BEGINNING = re.compile('^' + re.escape("\x08") + '+')
@@ -53,7 +54,7 @@ class RP2040:
     def _repl_read(self, wait_interval=0.2) -> str:
         """ Try to read rapidly to find the end """
         response = "" # Final response
-        end_markers = (MPY_PROMPT, BLOCK_PROMPT)
+        end_markers = (UPY_PROMPT, BLOCK_PROMPT)
         self._serial.timeout = wait_interval # Read quickly to find the correct prompt
         start_time = time.monotonic()
 
@@ -189,13 +190,16 @@ class RP2040:
         return self._communicate(f'exec(open("{file_name}").read())', ignore_response=True)
 
     def start_repl(self):
-        import readline # Required import to support cursor navigation with inputs
+        if platform.system == "Windows":
+            import pyreadline3
+        else:
+            import readline # Required import to support cursor navigation with inputs
 
         self.stop_exec()
         self.soft_reboot()
 
         # Read serial here to get prompt
-        prompt = self._serial_read(eor_token=MPY_PROMPT).decode("utf-8")
+        prompt = self._serial_read(eor_token=UPY_PROMPT).decode("utf-8")
         while True:
             raw_command = input(f"{prompt} ")
             if raw_command == "exit()":
