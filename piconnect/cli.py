@@ -1,44 +1,49 @@
 import argparse
-import time
 from piconnect.detect import get_serial_ports, is_pico
 from piconnect.upy.rp2040 import RP2040
 
-def main():
+def get_args():
     parser = argparse.ArgumentParser(description="piconnect")
-    subparsers = parser.add_subparsers(dest="command")
+    parser.add_argument("-v", "--verbose", action="store_true")
 
-    # ls command
-    ls_parser = subparsers.add_parser("ls", help="Directory listing on Pi Pico")
+    subparsers  = parser.add_subparsers(dest="command")
+
+    detect_parser   = subparsers.add_parser("detect",   help="Detect pico on serial")
+    repl_parser     = subparsers.add_parser("repl",     help="Start REPL session on Pi Pico")
+    ls_parser       = subparsers.add_parser("ls",       help="Directory listing on Pi Pico")
+    upload_parser   = subparsers.add_parser("upload",   help="Upload a file")
+    download_parser = subparsers.add_parser("download", help="Download a file")
+    exec_parser     = subparsers.add_parser("exec",     help="Execute a file")
+    stop_parser     = subparsers.add_parser("stop",     help="Send a stop to Pico")
+
+    repl_parser.add_argument("device", help="Serial device")
+
     ls_parser.add_argument("device", help="Serial device")
 
-    # Upload command
-    upload_parser = subparsers.add_parser("upload", help="Upload a file")
     upload_parser.add_argument("device", help="Serial device")
     upload_parser.add_argument("read_file", help="File to upload")
     upload_parser.add_argument("file", help="Save name for file to upload")
     upload_parser.add_argument("--overwrite", action="store_true", help="Overwrite the file if it exists")
 
-    # Download command
-    download_parser = subparsers.add_parser("download", help="Download a file")
     download_parser.add_argument("device", help="Serial device")
     download_parser.add_argument("file", help="File to download")
     download_parser.add_argument("save_file", help="Location to save to")
 
-    # Execute command
-    exec_parser = subparsers.add_parser("execute", help="Execute a file")
     exec_parser.add_argument("device", help="Serial device")
     exec_parser.add_argument("file", help="File to execute")
 
-    # Stop command
-    stop_parser = subparsers.add_parser("stop", help="Send a stop to Pico")
     stop_parser.add_argument("device", help="Serial device")
 
-    # Detect command
-    detect_parser = subparsers.add_parser("detect", help="Detect pico on serial")
+    return parser.parse_args()
 
-    args = parser.parse_args()
+def main():
+    args = get_args()
 
     match args.command:
+        case "repl":
+            # Arrow keys and block commands are broken.... maybe just no timeout for this?
+            pico = RP2040(args.device, verbose=False)
+            pico.start_repl()
         case "ls":
             pico = RP2040(args.device)
             pico.stop_exec()
@@ -68,7 +73,7 @@ def main():
                 print("Coms test failed. Try re-inserting the Pi Pico USB")
             with open(args.save_file, "w") as save_file:
                 pico.download_file(args.file, save_file)
-        case "execute":
+        case "exec":
             pico = RP2040(args.device)
             pico.stop_exec()
             pico.send_enter()
