@@ -104,6 +104,8 @@ class RP2040:
             response = response.replace("\r\r\n", "\n")
         if response.startswith(BLOCK_PROMPT):
             response = response[6:]
+        if response.endswith("\r\n"):
+            response = response[:-2] # Take only the last newline off
         return response
 
     def _communicate(self, command: str, is_block_command: bool = False, ignore_response: bool = False) -> Optional[str]:
