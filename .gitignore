@@ -20,6 +20,7 @@ MANIFEST
 venv/
 env/
 _envnix/
+_envwin/
 
 # IDE-specific files and directories (e.g., for Visual Studio Code, PyCharm, etc.)
 .vscode/

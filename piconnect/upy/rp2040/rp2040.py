@@ -2,16 +2,16 @@ import serial
 import ast
 import time
 import re
+import platform
 from enum import Enum
 from typing import IO
 from itertools import cycle
-import serial_asyncio
 
 TERMINATOR = '\r\n'     # Newlines, for terminating a message or simulating an "enter"
-MPY_PROMPT = "\r\n>>>"  # New prompt, for looking when serial coms is finsihed
+UPY_PROMPT = "\r\n>>>"  # New prompt, for looking when serial coms is finsihed
 BLOCK_PROMPT = "..."   # Block command prompt
 EOR_MARKER = "---f81b734f-7be3-4747-ae0b-c449006b33dd---" # A Special tag to aid finding the end of response
-EOR_TOKEN  = f"{EOR_MARKER}{MPY_PROMPT}" # Token to look for to end reading from serial
+EOR_TOKEN  = f"{EOR_MARKER}{UPY_PROMPT}" # Token to look for to end reading from serial
 EOR_MARKER_COMMAND = f";print('{EOR_MARKER}')" # Add this to ensure the special tag is printed at the end of the response
 EOM_MARKER = f';pass;pass;pass;pass{EOR_MARKER_COMMAND}' # End of message marker to remove it easily from the response
 RE_MATCH_BACKSPACE_BEGINNING = re.compile('^' + re.escape("\x08") + '+')
@@ -27,17 +27,24 @@ class RP2040:
                  start_closed=False, 
                  verbose=False,
                  serial_read_timeout=15,
+                 serial_write_timeout=None,
                  ):
         self.verbose = verbose
         self._serial_read_timeout = serial_read_timeout
-        self._mpy_version = micropython_version
+        self._serial_write_timeout = serial_write_timeout
+        self._upy_version = micropython_version
         self._serial_port = serial_port
         self._serial = None
         if not start_closed:
             self._open_serial()
 
     def _open_serial(self):
-        self._serial = serial.Serial(self._serial_port, 115200, timeout=self._serial_read_timeout)
+        self._serial = serial.Serial(
+            self._serial_port, 
+            115200, 
+            timeout=self._serial_read_timeout,
+            write_timeout=0.5
+        )
 
     def _serial_read(self, eor_token=EOR_TOKEN) -> bytearray:
         response = self._serial.read_until(eor_token.encode("utf8")).strip()
@@ -48,7 +55,7 @@ class RP2040:
     def _repl_read(self, wait_interval=0.2) -> str:
         """ Try to read rapidly to find the end """
         response = "" # Final response
-        end_markers = (MPY_PROMPT, BLOCK_PROMPT)
+        end_markers = (UPY_PROMPT, BLOCK_PROMPT)
         self._serial.timeout = wait_interval # Read quickly to find the correct prompt
         start_time = time.monotonic()
 
@@ -85,18 +92,23 @@ class RP2040:
             extras = set()
 
         response = response.strip()
-        response = response.replace(f"{command}", "") # Remove echoed command
+        response = response.replace(command, "") # Remove echoed command
+        if platform.system() == "Windows":
+            response = response.replace(command[:-2], "") # In windows theres some odd issue with termination characters 
         for extra in extras:
-            response = response.replace(f"{extra}", "") # Remove any extras (Such as block_command altering the EOM)
+            response = response.replace(extra, "") # Remove any extras (Such as block_command altering the EOM)
         if response.endswith(EOR_TOKEN):
             response = response[:-len(EOR_TOKEN)] # Remove EOR marker and prompt
         if response.startswith(BLOCK_PROMPT):
             response = response[6:] # Remove starting dots created by block commands
+        if platform.system() == "Windows":
+            response = response.replace("\r\n", "\n")
+            response = response.replace("\r\n", "\n")
         return response.strip()
 
     def _communicate(self, 
                      command: str, 
-                     block_command: bool = False,
+                     is_block_command: bool = False,
                      ignore_response: bool = False
                      ):
         """ Perform Write and Read of the serial with filtering to get just the output 
@@ -104,12 +116,16 @@ class RP2040:
         """
         extra_clean = set()
         response = None
-        if block_command:
-            # More needed for cleaning after the response due to the MPY prompt not being returned here
+        command = f"{command}{EOM_MARKER}{TERMINATOR}"
+
+        if is_block_command:
+            # More needed for cleaning after the response due to the UPY prompt not being returned here
             extra_clean.add(f"{command}{EOM_MARKER}{TERMINATOR}{BLOCK_PROMPT}{TERMINATOR}")
-            command = f"{command}{EOM_MARKER}{TERMINATOR}{TERMINATOR}"
-        else:
-            command = f"{command}{EOM_MARKER}{TERMINATOR}"
+            if platform.system() == "Windows":
+                # Windows serial adds another command with some odd line endings??
+                extra_clean.add(f"{BLOCK_PROMPT} \r\n{command.strip()}\r\r\n")
+            # Extra terminator required to escape the block and not getting stuck
+            command = f"{command}{TERMINATOR}"
 
         self._serial_write(command.encode("utf8"))
         if not ignore_response:
@@ -157,7 +173,7 @@ class RP2040:
         """ Download a file from the Pico to the host """
         file_data = self._communicate(
             f'with open("{pico_filename}", "r") as f: print(f.read(), end="")',
-            block_command=True
+            is_block_command=True
         )
         save_fp.write(file_data)
 
@@ -175,7 +191,7 @@ class RP2040:
         # Upload the file to the pico
         self._communicate(
             f'with open("{pico_file_path}", "wb") as f: f.write({local_data})',
-            block_command=True
+            is_block_command=True
         )
 
     def execute_file(self, file_name):
@@ -184,13 +200,16 @@ class RP2040:
         return self._communicate(f'exec(open("{file_name}").read())', ignore_response=True)
 
     def start_repl(self):
-        import readline # Required import to support cursor navigation with inputs
+        if platform.system == "Windows":
+            import pyreadline3
+        else:
+            import readline # Required import to support cursor navigation with inputs
 
         self.stop_exec()
         self.soft_reboot()
 
         # Read serial here to get prompt
-        prompt = self._serial_read(eor_token=MPY_PROMPT).decode("utf-8")
+        prompt = self._serial_read(eor_token=UPY_PROMPT).decode("utf-8")
         while True:
             raw_command = input(f"{prompt} ")
             if raw_command == "exit()":
