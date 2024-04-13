@@ -22,7 +22,7 @@ def is_pico(device):
         pico.stop_exec()
         pico.send_enter()
         return pico.coms_test()
-    except Exception as e:
+    except Exception as err:
         return False
     
 def scan_for_pico(serial_devices):
