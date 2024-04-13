@@ -4,31 +4,27 @@ import time
 import re
 import platform
 from enum import Enum
-from typing import IO
+from typing import IO, Optional
 from itertools import cycle
 
-TERMINATOR = '\r\n'     # Newlines, for terminating a message or simulating an "enter"
-UPY_PROMPT = "\r\n>>>"  # New prompt, for looking when serial coms is finsihed
-BLOCK_PROMPT = "..."   # Block command prompt
-EOR_MARKER = "---f81b734f-7be3-4747-ae0b-c449006b33dd---" # A Special tag to aid finding the end of response
-EOR_TOKEN  = f"{EOR_MARKER}{UPY_PROMPT}" # Token to look for to end reading from serial
-EOR_MARKER_COMMAND = f";print('{EOR_MARKER}')" # Add this to ensure the special tag is printed at the end of the response
-EOM_MARKER = f';pass;pass;pass;pass{EOR_MARKER_COMMAND}' # End of message marker to remove it easily from the response
+
+# Constants for communication patterns
+TERMINATOR = '\r\n'  
+UPY_PROMPT = "\r\n>>>"  
+BLOCK_PROMPT = "..."  
+EOR_MARKER = "---f81b734f-7be3-4747-ae0b-c449006b33dd---"
+EOR_TOKEN  = f"{EOR_MARKER}{UPY_PROMPT}"
+EOR_MARKER_COMMAND = f";print('{EOR_MARKER}')"
+EOM_MARKER = f';pass;pass;pass;pass{EOR_MARKER_COMMAND}'
 RE_MATCH_BACKSPACE_BEGINNING = re.compile('^' + re.escape("\x08") + '+')
 
 class MicroPython_Version(Enum):
+    """Enumeration of supported MicroPython versions."""
     v1_21_0 = "1.21.0"
 
-
 class RP2040:
-    def __init__(self, 
-                 serial_port: str, 
-                 micropython_version: MicroPython_Version = MicroPython_Version.v1_21_0, 
-                 start_closed=False, 
-                 verbose=False,
-                 serial_read_timeout=15,
-                 serial_write_timeout=None,
-                 ):
+    """Manage communications with a MicroPython RP2040 device via serial."""
+    def __init__(self, serial_port: str, micropython_version: MicroPython_Version = MicroPython_Version.v1_21_0, start_closed: bool=False, verbose: bool=False, serial_read_timeout: int=15, serial_write_timeout: Optional[int]=None):
         self.verbose = verbose
         self._serial_read_timeout = serial_read_timeout
         self._serial_write_timeout = serial_write_timeout
@@ -39,106 +35,88 @@ class RP2040:
             self._open_serial()
 
     def _open_serial(self):
+        """Initializes the serial connection with the specified parameters."""
         self._serial = serial.Serial(
-            self._serial_port, 
-            115200, 
+            port=self._serial_port, 
+            baudrate=115200, 
             timeout=self._serial_read_timeout,
             write_timeout=0.5
         )
 
-    def _serial_read(self, eor_token=EOR_TOKEN) -> bytearray:
+    def _serial_read(self, eor_token: str = EOR_TOKEN) -> bytearray:
+        """Reads from serial until the end-of-response token is encountered."""
         response = self._serial.read_until(eor_token.encode("utf8")).strip()
         if self.verbose:
             print(f"RECV {self._serial_port} :: {response}")
         return response
 
-    def _repl_read(self, wait_interval=0.2) -> str:
-        """ Try to read rapidly to find the end """
-        response = "" # Final response
+    def _repl_read(self, wait_interval: float = 0.2) -> str:
+        """Attempts to read from the REPL prompt"""
+        response = ""
         end_markers = (UPY_PROMPT, BLOCK_PROMPT)
-        self._serial.timeout = wait_interval # Read quickly to find the correct prompt
+        self._serial.timeout = wait_interval
         start_time = time.monotonic()
 
         for end_marker in cycle(end_markers):
-            # Check if we have waited too long
             if (time.monotonic() - start_time) > self._serial_read_timeout:
                 break
-
-            # Seek for a response marker
             try:
                 response += self._serial_read(eor_token=end_marker).decode("utf-8")
             except serial.SerialTimeoutException:
-                pass # don't care about timeouts for now
+                pass
             else:
-                # Got a response, check if there are any more bytes to read
-                time.sleep(0.2)
+                time.sleep(0.1)
                 if not self._serial.in_waiting:
                     break
 
         self._serial.timeout = self._serial_read_timeout
         if not response:
-            raise serial.SerialTimeoutException
+            raise serial.SerialTimeoutException("Timeout while reading from serial.")
         return response
 
     def _serial_write(self, command: bytes):
+        """Writes a command to the serial port after clearing the input and output buffers."""
         self._serial.reset_output_buffer()
         self._serial.reset_input_buffer()
         if self.verbose:
             print(f"SEND {self._serial_port} :: {command}")
         self._serial.write(command)
 
-    def _extract_response_payload(self, response, start_marker, end_marker):
-        """
-        Extract the payload from the response getting the content between the
-        last occurnace of start marker and last occurance of the end marker
-        """
+    def _extract_response_payload(self, response: str, start_marker: str, end_marker: str) -> Optional[str]:
+        """Extracts a payload from a response delimited by specified start and end markers."""
         last_start_index = response.rfind(start_marker)
         if last_start_index == -1:
-            return None  # Start marker not found
+            return None
         start_index = last_start_index + len(start_marker)
 
-        # Find the start of the last end marker
         last_end_index = response.rfind(end_marker)
         if last_end_index == -1 or last_end_index < start_index:
-            return None  # End marker not found
+            return None
         
-        # Extract the content between the markers
         return response[start_index:last_end_index]
 
     def _clean_response(self, response: str) -> str:
-        block_prompt_character = 6 # Amount of character from start of block prompt to the start of payload
+        """Cleans up the response string from a MicroPython device to remove unnecessary prompts and markers."""
         response = self._extract_response_payload(response, EOM_MARKER, EOR_MARKER)
         response = response.lstrip()
 
-        # Windows is weird:
         if platform.system() == "Windows":
-            response = response.replace("\r\r\n", "\n") # Could remove things within the response!
-            block_prompt_character = 5
-
+            response = response.replace("\r\r\n", "\n")
         if response.startswith(BLOCK_PROMPT):
-            response = response[block_prompt_character:] # Remove starting dots created by block commands
+            response = response[6:]
         return response
 
-    def _communicate(self, 
-                     command: str, 
-                     is_block_command: bool = False,
-                     ignore_response: bool = False
-                     ):
-        """ Perform Write and Read of the serial with filtering to get just the output 
-            Block commands are ones that would require an indented level such as a with or for statement
-        """
-        response = None
-        command = f"{command}{EOM_MARKER}{TERMINATOR}"
-
+    def _communicate(self, command: str, is_block_command: bool = False, ignore_response: bool = False) -> Optional[str]:
+        """Handles the sending and receiving of a command to/from the MicroPython device."""
+        command += EOM_MARKER + TERMINATOR
         if is_block_command:
-            command = f"{command}{TERMINATOR}"
-
+            command += TERMINATOR
         self._serial_write(command.encode("utf8"))
         if not ignore_response:
             response = self._serial_read().decode()
             response = self._clean_response(response)
-
-        return response
+            return response
+        return None
 
     def get_file_list(self):
         """ Get a list of files stored on the device """
