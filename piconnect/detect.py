@@ -12,7 +12,7 @@ def get_serial_ports():
         case "Linux":
             return glob.glob('/dev/ttyACM*')
         case "Darwin":
-            glob.glob('/dev/tty.usb*')
+            return glob.glob('/dev/tty.usb*')
         case _:
             raise NotImplementedError("Unsupported OS")
 
