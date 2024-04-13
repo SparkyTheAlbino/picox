@@ -68,7 +68,7 @@ piconnect stop /dev/ttyUSB0
 You can also use piconnect within your Python scripts as follows:
 
 ``` python
-from piconnect.upy.rp2040 import RP2040
+from piconnect import RP2040
 
 # Initialize the Pico board
 pico = RP2040('/dev/tty.usbmodem0001')

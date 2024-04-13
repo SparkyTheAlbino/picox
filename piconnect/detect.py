@@ -24,3 +24,10 @@ def is_pico(device):
         return pico.coms_test()
     except Exception as e:
         return False
+    
+def scan_for_pico(serial_devices):
+    for device in serial_devices:
+        if is_pico(device):
+            return device
+    else:
+        return None
