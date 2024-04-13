@@ -87,24 +87,37 @@ class RP2040:
             print(f"SEND {self._serial_port} :: {command}")
         self._serial.write(command)
 
-    def _clean_response(self, response: str, command, extras: set = None) -> str:
-        if extras is None:
-            extras = set()
+    def _extract_response_payload(self, response, start_marker, end_marker):
+        """
+        Extract the payload from the response getting the content between the
+        last occurnace of start marker and last occurance of the end marker
+        """
+        last_start_index = response.rfind(start_marker)
+        if last_start_index == -1:
+            return None  # Start marker not found
+        start_index = last_start_index + len(start_marker)
 
-        response = response.strip()
-        response = response.replace(command, "") # Remove echoed command
+        # Find the start of the last end marker
+        last_end_index = response.rfind(end_marker)
+        if last_end_index == -1 or last_end_index < start_index:
+            return None  # End marker not found
+        
+        # Extract the content between the markers
+        return response[start_index:last_end_index]
+
+    def _clean_response(self, response: str) -> str:
+        block_prompt_character = 6 # Amount of character from start of block prompt to the start of payload
+        response = self._extract_response_payload(response, EOM_MARKER, EOR_MARKER)
+        response = response.lstrip()
+
+        # Windows is weird:
         if platform.system() == "Windows":
-            response = response.replace(command[:-2], "") # In windows theres some odd issue with termination characters 
-        for extra in extras:
-            response = response.replace(extra, "") # Remove any extras (Such as block_command altering the EOM)
-        if response.endswith(EOR_TOKEN):
-            response = response[:-len(EOR_TOKEN)] # Remove EOR marker and prompt
+            response = response.replace("\r\r\n", "\n") # Could remove things within the response!
+            block_prompt_character = 5
+
         if response.startswith(BLOCK_PROMPT):
-            response = response[6:] # Remove starting dots created by block commands
-        if platform.system() == "Windows":
-            response = response.replace("\r\n", "\n")
-            response = response.replace("\r\n", "\n")
-        return response.strip()
+            response = response[block_prompt_character:] # Remove starting dots created by block commands
+        return response
 
     def _communicate(self, 
                      command: str, 
@@ -114,23 +127,16 @@ class RP2040:
         """ Perform Write and Read of the serial with filtering to get just the output 
             Block commands are ones that would require an indented level such as a with or for statement
         """
-        extra_clean = set()
         response = None
         command = f"{command}{EOM_MARKER}{TERMINATOR}"
 
         if is_block_command:
-            # More needed for cleaning after the response due to the UPY prompt not being returned here
-            extra_clean.add(f"{command}{EOM_MARKER}{TERMINATOR}{BLOCK_PROMPT}{TERMINATOR}")
-            if platform.system() == "Windows":
-                # Windows serial adds another command with some odd line endings??
-                extra_clean.add(f"{BLOCK_PROMPT} \r\n{command.strip()}\r\r\n")
-            # Extra terminator required to escape the block and not getting stuck
             command = f"{command}{TERMINATOR}"
 
         self._serial_write(command.encode("utf8"))
         if not ignore_response:
             response = self._serial_read().decode()
-            response = self._clean_response(response, command, extras=extra_clean)
+            response = self._clean_response(response)
 
         return response
 
