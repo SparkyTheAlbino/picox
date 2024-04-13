@@ -86,12 +86,16 @@ class RP2040:
         """Extracts a payload from a response delimited by specified start and end markers."""
         last_start_index = response.rfind(start_marker)
         if last_start_index == -1:
-            return None
+            return ""
         start_index = last_start_index + len(start_marker)
 
         last_end_index = response.rfind(end_marker)
         if last_end_index == -1 or last_end_index < start_index:
-            return None
+            # Could not find end tag - lets see if we can find the UPY prompt
+            if response.endswith(UPY_PROMPT):
+                return response[start_index:]
+            else:
+                return "" # Could not find a valid end marker
         
         return response[start_index:last_end_index]
 
@@ -113,11 +117,14 @@ class RP2040:
         command += EOM_MARKER + TERMINATOR
         if is_block_command:
             command += TERMINATOR
+
         self._serial_write(command.encode("utf8"))
+
         if not ignore_response:
-            response = self._serial_read().decode()
-            response = self._clean_response(response)
-            return response
+            if response := self._serial_read().decode():
+                return self._clean_response(response)
+            else:
+                raise Exception("No response when expected")
         return None
 
     def get_file_list(self):
@@ -157,6 +164,10 @@ class RP2040:
 
     def download_file(self, pico_filename, save_fp: IO[str]):
         """ Download a file from the Pico to the host """
+
+        if pico_filename not in self.get_file_list():
+            raise FileNotFoundError(f"File '{pico_filename}' does not exist on Pico")
+
         file_data = self._communicate(
             f'with open("{pico_filename}", "r") as f: print(f.read(), end="")',
             is_block_command=True
