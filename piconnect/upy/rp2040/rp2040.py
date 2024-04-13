@@ -27,10 +27,11 @@ class RP2040:
                  start_closed=False, 
                  verbose=False,
                  serial_read_timeout=15,
-                 serial_write_timeout=1,
+                 serial_write_timeout=None,
                  ):
         self.verbose = verbose
         self._serial_read_timeout = serial_read_timeout
+        self._serial_write_timeout = serial_write_timeout
         self._upy_version = micropython_version
         self._serial_port = serial_port
         self._serial = None
@@ -91,18 +92,23 @@ class RP2040:
             extras = set()
 
         response = response.strip()
-        response = response.replace(f"{command}", "") # Remove echoed command
+        response = response.replace(command, "") # Remove echoed command
+        if platform.system() == "Windows":
+            response = response.replace(command[:-2], "") # In windows theres some odd issue with termination characters 
         for extra in extras:
-            response = response.replace(f"{extra}", "") # Remove any extras (Such as block_command altering the EOM)
+            response = response.replace(extra, "") # Remove any extras (Such as block_command altering the EOM)
         if response.endswith(EOR_TOKEN):
             response = response[:-len(EOR_TOKEN)] # Remove EOR marker and prompt
         if response.startswith(BLOCK_PROMPT):
             response = response[6:] # Remove starting dots created by block commands
+        if platform.system() == "Windows":
+            response = response.replace("\r\n", "\n")
+            response = response.replace("\r\n", "\n")
         return response.strip()
 
     def _communicate(self, 
                      command: str, 
-                     block_command: bool = False,
+                     is_block_command: bool = False,
                      ignore_response: bool = False
                      ):
         """ Perform Write and Read of the serial with filtering to get just the output 
@@ -110,12 +116,16 @@ class RP2040:
         """
         extra_clean = set()
         response = None
-        if block_command:
-            # More needed for cleaning after the response due to the MPY prompt not being returned here
+        command = f"{command}{EOM_MARKER}{TERMINATOR}"
+
+        if is_block_command:
+            # More needed for cleaning after the response due to the UPY prompt not being returned here
             extra_clean.add(f"{command}{EOM_MARKER}{TERMINATOR}{BLOCK_PROMPT}{TERMINATOR}")
-            command = f"{command}{EOM_MARKER}{TERMINATOR}{TERMINATOR}"
-        else:
-            command = f"{command}{EOM_MARKER}{TERMINATOR}"
+            if platform.system() == "Windows":
+                # Windows serial adds another command with some odd line endings??
+                extra_clean.add(f"{BLOCK_PROMPT} \r\n{command.strip()}\r\r\n")
+            # Extra terminator required to escape the block and not getting stuck
+            command = f"{command}{TERMINATOR}"
 
         self._serial_write(command.encode("utf8"))
         if not ignore_response:
@@ -163,7 +173,7 @@ class RP2040:
         """ Download a file from the Pico to the host """
         file_data = self._communicate(
             f'with open("{pico_filename}", "r") as f: print(f.read(), end="")',
-            block_command=True
+            is_block_command=True
         )
         save_fp.write(file_data)
 
@@ -181,7 +191,7 @@ class RP2040:
         # Upload the file to the pico
         self._communicate(
             f'with open("{pico_file_path}", "wb") as f: f.write({local_data})',
-            block_command=True
+            is_block_command=True
         )
 
     def execute_file(self, file_name):
