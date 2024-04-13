@@ -94,3 +94,24 @@ pico.execute_file("remote.py")
 # Run basic python commands
 pico.run_python_command("x = 1 + 1; print(x)")
 ```
+
+## Local developmnt
+1. Create virtual env
+``` bash
+python -m venv _env
+```
+2. Activate env
+``` bash
+# Win
+_env/Scripts/activate.ps1
+# nix
+source _env/bin/activate
+```
+3. Install requirements
+``` bash
+pip install -r requirement.txt
+```
+4. Install module editable
+```
+pip install -e .
+```
