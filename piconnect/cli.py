@@ -1,6 +1,6 @@
 import argparse
-from piconnect.detect import get_serial_ports, is_pico
-from piconnect.upy.rp2040 import RP2040
+from .detect import scan_for_pico, get_serial_ports
+from .upy.rp2040 import RP2040
 
 def get_args():
     parser = argparse.ArgumentParser(description="piconnect")
@@ -36,56 +36,44 @@ def get_args():
 
     return parser.parse_args()
 
+def init_rp2040(device):
+    pico = RP2040(device)
+    pico.stop_exec()
+    pico.send_enter()
+    if not pico.coms_test():
+        print("Coms test failed. Try re-inserting the Pi Pico USB")
+    return pico
+
 def main():
     args = get_args()
 
     match args.command:
         case "repl":
-            # Arrow keys and block commands are broken.... maybe just no timeout for this?
-            pico = RP2040(args.device, verbose=False)
+            pico = init_rp2040(args.device)
             pico.start_repl()
         case "ls":
-            pico = RP2040(args.device)
-            pico.stop_exec()
-            pico.send_enter()
-            if not pico.coms_test():
-                print("Coms test failed. Try re-inserting the Pi Pico USB")
+            pico = init_rp2040(args.device)
             for file in pico.get_file_list():
                 print(file)
         case "stop":
-            pico = RP2040(args.device)
-            pico.stop_exec()
-            pico.send_enter()
+            pico = init_rp2040(args.device)
             pico.stop_exec()
         case "upload":
-            pico = RP2040(args.device)
-            pico.stop_exec()
-            pico.send_enter()
-            if not pico.coms_test():
-                print("Coms test failed. Try re-inserting the Pi Pico USB")
+            pico = init_rp2040(args.device)
             with open(args.read_file, "rb") as read_file:
                 pico.upload_file(read_file, args.file, overwrite=args.overwrite)
         case "download":
-            pico = RP2040(args.device)
-            pico.stop_exec()
-            pico.send_enter()
-            if not pico.coms_test():
-                print("Coms test failed. Try re-inserting the Pi Pico USB")
+            pico = init_rp2040(args.device)
             with open(args.save_file, "w") as save_file:
                 pico.download_file(args.file, save_file)
         case "exec":
-            pico = RP2040(args.device)
-            pico.stop_exec()
-            pico.send_enter()
-            if not pico.coms_test():
-                print("Coms test failed. Try re-inserting the Pi Pico USB")
+            pico = init_rp2040(args.device)
             print(f"Executing {args.file}")
             pico.execute_file(args.file)
         case "detect":
             serial_devices = get_serial_ports()
-            for device in serial_devices:
-                if is_pico(device):
-                    print(f"{device}")
+            device = scan_for_pico(serial_devices)
+            print(device)
 
 if __name__ == "__main__":
     main()
