@@ -36,8 +36,8 @@ def get_args():
 
     return parser.parse_args()
 
-def init_rp2040(device):
-    pico = RP2040(device)
+def init_rp2040(device, verbose=False):
+    pico = RP2040(device, verbose=verbose)
     pico.stop_exec()
     pico.send_enter()
     if not pico.coms_test():
