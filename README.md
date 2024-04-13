@@ -9,6 +9,11 @@ Windows, Linux and macOS are supported.
 - File operations: Upload, download, execute, and list files on Pi Pico
 - Stop current execution on device
 
+## Known issues
+- REPL can timeout on long operations such as sleep. Its in the nature of how it scans for the end
+- Line endings of files coming out can get a little strange. watch out if there are som extra spaces etc. Best bet is to ensure you always work in the same line endings
+- File operations do not include folder operations __yet__
+
 ## Installation
 Install via `pip`:
 
@@ -69,9 +74,14 @@ You can also use piconnect within your Python scripts as follows:
 
 ``` python
 from piconnect import RP2040
+from piconnect.detect import get_serial_ports, scan_for_pico
+
+# Get device
+ports = get_serial_ports()
+pico_port = scan_for_pico(ports)
 
 # Initialize the Pico board
-pico = RP2040('/dev/tty.usbmodem0001')
+pico = RP2040(pico_port)
 
 # Coms test
 if not pico.coms_test():
@@ -95,7 +105,7 @@ pico.execute_file("remote.py")
 pico.run_python_command("x = 1 + 1; print(x)")
 ```
 
-## Local developmnt
+## Local development
 1. Create virtual env
 ``` bash
 python -m venv _env
