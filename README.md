@@ -1,5 +1,5 @@
-# piconnect
-`piconnect` is a tool that facilitates the interaction with Raspberry Pi Pico running MicroPython boards through (CLI) or within a Python script. This uses the USB serial port for communication.
+# picox
+`picox` is a tool that facilitates the interaction with Raspberry Pi Pico running MicroPython boards through (CLI) or within a Python script. This uses the USB serial port for communication.
 
 Windows, Linux and macOS are supported.
 
@@ -18,7 +18,7 @@ Windows, Linux and macOS are supported.
 Install via `pip`:
 
 ``` bash 
-pip install piconnect
+pip install picox
 ```
 
 
@@ -27,19 +27,19 @@ pip install piconnect
 
 ### Detecting Pi Pico:
 ``` bash
-piconnect detect
+picox detect
 
 # Output: COM7 or /dev/ttyUSB0
 ```
 
 ### REPL session on Pi Pico
 ``` bash
-piconnect repl /dev/ttyUSB0
+picox repl /dev/ttyUSB0
 ```
 
 ### Listing files on Pi Pico:
 ``` bash
-piconnect ls /dev/ttyUSB0
+picox ls /dev/ttyUSB0
 
 # exmaple output:
 # demo.py
@@ -48,33 +48,33 @@ piconnect ls /dev/ttyUSB0
 
 ### Uploading a file:
 ``` bash
-piconnect upload  /dev/ttyUSB0 local.py remote.py --overwrite
+picox upload  /dev/ttyUSB0 local.py remote.py --overwrite
 
 # --overrite to force update the file on the Pi Pico
 ```
 
 ### Downloading a file:
 ``` bash
-piconnect download /dev/ttyUSB0 remote.py local.py
+picox download /dev/ttyUSB0 remote.py local.py
 ```
 
 ### Executing a file on Pi Pico:
 ``` bash
-piconnect exec /dev/ttyUSB0 remote.py
+picox exec /dev/ttyUSB0 remote.py
 ```
 
 ### Stopping any ongoing operation on Pi Pico:
 ``` bash
-piconnect stop /dev/ttyUSB0
+picox stop /dev/ttyUSB0
 ```
 
 
 ## Python Script Usage
-You can also use piconnect within your Python scripts as follows:
+You can also use picox within your Python scripts as follows:
 
 ``` python
-from piconnect import RP2040
-from piconnect.detect import get_serial_ports, scan_for_pico
+from picox import RP2040
+from picox.detect import get_serial_ports, scan_for_pico
 
 # Get device
 ports = get_serial_ports()
