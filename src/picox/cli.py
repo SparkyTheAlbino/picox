@@ -1,6 +1,8 @@
 import argparse
-from .detect import scan_for_pico, get_serial_ports
+
+from .detect import detect_pico
 from .upy.rp2040 import RP2040
+from .logconfig import LOGGER
 
 def get_args():
     parser = argparse.ArgumentParser(description="picox")
@@ -41,7 +43,7 @@ def init_rp2040(device, verbose=False):
     pico.stop_exec()
     pico.send_enter()
     if not pico.coms_test():
-        print("Coms test failed. Try re-inserting the Pi Pico USB")
+        LOGGER.error("Coms test failed. Try re-inserting the Pi Pico USB")
     return pico
 
 def main():
@@ -54,7 +56,7 @@ def main():
         case "ls":
             pico = init_rp2040(args.device)
             for file in pico.get_file_list():
-                print(file)
+                print(file) # Print to stdout
         case "stop":
             pico = init_rp2040(args.device)
             pico.stop_exec()
@@ -68,12 +70,11 @@ def main():
                 pico.download_file(args.file, save_file)
         case "exec":
             pico = init_rp2040(args.device)
-            print(f"Executing {args.file}")
+            LOGGER.debug(f"Executing {args.file}")
             pico.execute_file(args.file)
         case "detect":
-            serial_devices = get_serial_ports()
-            device = scan_for_pico(serial_devices)
-            print(device)
+            device = detect_pico()
+            print(device) # show device to stdout
 
 if __name__ == "__main__":
     main()

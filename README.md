@@ -1,5 +1,5 @@
 # picox
-`picox` is a tool that facilitates the interaction with Raspberry Pi Pico running MicroPython boards through (CLI) or within a Python script. This uses the USB serial port for communication.
+`picox` is a tool that facilitates the interaction with Raspberry Pi Pico running MicroPython boards through the terminal or within a Python script. This uses the USB serial port for communication.
 
 Windows, Linux and macOS are supported.
 
@@ -48,7 +48,7 @@ picox ls /dev/ttyUSB0
 
 ### Uploading a file:
 ``` bash
-picox upload  /dev/ttyUSB0 local.py remote.py --overwrite
+picox upload /dev/ttyUSB0 local.py remote.py --overwrite
 
 # --overrite to force update the file on the Pi Pico
 ```
