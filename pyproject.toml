@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "picox"
-version = "1.1.2"
+version = "1.1.3"
 authors = [{name = "Harvey"}]
 description = "Tools for working with a Rasbperry Pi Pico running MicroPython"
 readme = "README.md"
-license = {file = "LICENSE"}
+license = {file = "LICENCE"}
 dependencies = [
     "pyserial == 3.5",
     'pyreadline3 == 3.4.1 ; platform_system == "Windows"',
@@ -27,4 +27,4 @@ keywords = ["pico", "serial", "RaspberryPi"]
 dev = ['build', 'twine']
 
 [project.scripts]
-piconnect = "piconnect.cli:main"
+picox = "picox.cli:main"

@@ -147,11 +147,18 @@ class RP2040:
             return ast.literal_eval(string_list) if string_list else []
 
     def stop_exec(self):
+        """ Stop execution and press enter """
+        self.send_stop_exec()
+        self.send_enter()
+
+    # TODO - Do we need the time.sleep here?
+
+    def send_stop_exec(self):
         """ Send keyboard interrupt to stop execution """
         self._serial_write(b'\x03')  # Ctrl+C -> stop execution
         time.sleep(0.2) # Give the device time to respond and be flushed
 
-    def soft_reboot(self):
+    def send_soft_reboot(self):
         """ Send soft reboot command (Ctrl+D) """
         self._serial_write(b'\x04')  # Ctrl+D -> Soft reboot if nothing executing and blank REPL
         time.sleep(0.2) # Give the device time to respond and be flushed
@@ -199,8 +206,8 @@ class RP2040:
         )
 
     def execute_file(self, file_name):
-        print(f"Executing file {file_name}")
-        self.stop_exec()
+        LOGGER.debug(f"Executing file {file_name}")
+        self.send_stop_exec()
         return self._communicate(f'exec(open("{file_name}").read())', ignore_response=True)
 
     def start_repl(self):
@@ -209,8 +216,8 @@ class RP2040:
         else:
             import readline # Required import to support cursor navigation with inputs
 
-        self.stop_exec()
-        self.soft_reboot()
+        self.send_stop_exec()
+        self.send_soft_reboot()
 
         # Read serial here to get prompt
         prompt = self._serial_read(eor_token=UPY_PROMPT).decode("utf-8")

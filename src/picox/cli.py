@@ -1,8 +1,8 @@
 import argparse
 
-from .detect import detect_pico
-from .upy.rp2040 import RP2040
+from .upy import RP2040
 from .logconfig import LOGGER
+from .detect import detect_all_pico, detect_first_pico
 
 def get_args():
     parser = argparse.ArgumentParser(description="picox")
@@ -17,6 +17,8 @@ def get_args():
     download_parser = subparsers.add_parser("download", help="Download a file")
     exec_parser     = subparsers.add_parser("exec",     help="Execute a file")
     stop_parser     = subparsers.add_parser("stop",     help="Send a stop to Pico")
+
+    detect_parser.add_argument("--all", action="store_true", default=False, help="Detecta all pico devices and returna list")
 
     repl_parser.add_argument("device", help="Serial device")
 
@@ -40,7 +42,7 @@ def get_args():
 
 def init_rp2040(device, verbose=False):
     pico = RP2040(device, verbose=verbose)
-    pico.stop_exec()
+    pico.send_stop_exec()
     pico.send_enter()
     if not pico.coms_test():
         LOGGER.error("Coms test failed. Try re-inserting the Pi Pico USB")
@@ -59,7 +61,7 @@ def main():
                 print(file) # Print to stdout
         case "stop":
             pico = init_rp2040(args.device)
-            pico.stop_exec()
+            pico.send_stop_exec()
         case "upload":
             pico = init_rp2040(args.device)
             with open(args.read_file, "rb") as read_file:
@@ -73,8 +75,11 @@ def main():
             LOGGER.debug(f"Executing {args.file}")
             pico.execute_file(args.file)
         case "detect":
-            device = detect_pico()
-            print(device) # show device to stdout
+            if args.all:
+                detected = detect_all_pico()
+            else:
+                detected = detect_first_pico()
+            print(detected) # show device to stdout
 
 if __name__ == "__main__":
     main()

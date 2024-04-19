@@ -5,7 +5,7 @@ from typing import List, Optional
 import serial
 import serial.tools.list_ports
 
-from .upy.rp2040 import RP2040
+from .upy import RP2040
 
 
 def get_serial_ports() -> List[str]:
@@ -33,15 +33,13 @@ def is_pico(device: str):
     """
     try:
         pico = RP2040(device, serial_read_timeout=1, serial_write_timeout=1)
-        pico.stop_exec()
+        pico.send_stop_exec()
         pico.send_enter()
         return pico.coms_test()
     except Exception as err:
         return False
 
-# TODO - Get first or get all???
-
-def search_ports_for_pico(serial_devices: List[str]):
+def search_ports_for_pico(serial_devices: List[str]) -> List[str]:
     """
     Iterate over list of strings and try to communicate on those USB serial ports with a Pi Pico
     """
@@ -51,9 +49,24 @@ def search_ports_for_pico(serial_devices: List[str]):
     else:
         return None
     
-def detect_pico() -> Optional[str]:
+def detect_first_pico() -> Optional[str]:
     """
     Get ports + detect pico
     """
     serial_devices = get_serial_ports()
-    return search_ports_for_pico(serial_devices)
+    for device in serial_devices:
+        if is_pico(device):
+            return device
+    else:
+        return None
+
+def detect_all_pico() -> List:
+    """
+    Get ports then return all detected pico devices
+    """
+    serial_devices = get_serial_ports()
+    pico_devices = []
+    for serial_device in serial_devices:
+        if is_pico(serial_device):
+            pico_devices.append(serial_device)
+    return pico_devices
