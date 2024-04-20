@@ -27,7 +27,11 @@ pip install picox
 
 ### Detecting Pi Pico:
 ``` bash
+# get first found device
 picox detect
+
+# get a list of all connected pico devices
+pico detect --all
 
 # Output: COM7 or /dev/ttyUSB0
 ```
@@ -81,7 +85,7 @@ from picox.detect import get_first_pico_serial
 serial_device = get_first_pico_serial()
 pico = Pico(serial_device)
 
-# File listi
+# File listing
 for file in pico.get_file_list():
     print(file)
 
