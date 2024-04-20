@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "picox"
-version = "1.1.3"
+version = "1.1.4"
 authors = [{name = "Harvey"}]
 description = "Tools for working with a Rasbperry Pi Pico running MicroPython"
 readme = "README.md"
@@ -28,3 +28,9 @@ dev = ['build', 'twine']
 
 [project.scripts]
 picox = "picox.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/SparkyTheAlbino/picox"
+Documentation = "https://github.com/SparkyTheAlbino/picox"
+Repository = "https://github.com/SparkyTheAlbino/picox.git"
+Issues = "https://github.com/SparkyTheAlbino/picox/issues"
