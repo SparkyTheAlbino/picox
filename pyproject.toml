@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "picox"
+version = "1.1.3"
+authors = [{name = "Harvey"}]
+description = "Tools for working with a Rasbperry Pi Pico running MicroPython"
+readme = "README.md"
+license = {file = "LICENCE"}
+dependencies = [
+    "pyserial == 3.5",
+    'pyreadline3 == 3.4.1 ; platform_system == "Windows"',
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Embedded Systems",
+]
+keywords = ["pico", "serial", "RaspberryPi"]
+
+[project.optional-dependencies]
+dev = ['build', 'twine']
+
+[project.scripts]
+picox = "picox.cli:main"
