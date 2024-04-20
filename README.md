@@ -73,36 +73,34 @@ picox stop /dev/ttyUSB0
 You can also use picox within your Python scripts as follows:
 
 ``` python
-from picox import RP2040
-from picox.detect import get_serial_ports, scan_for_pico
+from picox import Pico
+from picox.detect import get_first_pico_serial
 
-# Get device
-ports = get_serial_ports()
-pico_port = scan_for_pico(ports)
 
-# Initialize the Pico board
-pico = RP2040(pico_port)
+# Init device
+serial_device = get_first_pico_serial()
+pico = Pico(serial_device)
 
-# Coms test
-if not pico.coms_test():
-    print("Coms test failed. Try re-inserting the Pi Pico USB")
+# File listi
+for file in pico.get_file_list():
+    print(file)
 
-# List files
-print(pico.get_file_list())
+# Download
+with open("./local/demo.py", "w") as download_file:
+    pico.download_file("remote_demo.py", download_file)
 
-# Upload a file
-with open("local.py", "rb") as file:
-    pico.upload_file(file, "remote.py")
+# Upload
+with open("./local/demo.py", "rb") as upload_file:
+    pico.upload_file(upload_file, "remote_demo.py", overwrite=True)
 
-# Download a file
-with open("local.py", "w") as save_file:
-    pico.download_file("remote.py", save_file)
+# Execute
+pico.execute_file("remote_demo.py")
 
-# Execute a file
-pico.execute_file("remote.py")
+# Halt execution on device
+pico.stop_exec()
 
-# Run basic python commands
-pico.run_python_command("x = 1 + 1; print(x)")
+# Soft reboot device
+pico.send_soft_reboot()
 ```
 
 ## Local development

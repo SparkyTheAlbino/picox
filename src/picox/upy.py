@@ -26,22 +26,46 @@ class MicroPython_Version(Enum):
     v1_21_0 = "1.21.0"
 
 
-class RP2040:
+class Pico:
     """Manage communications with a MicroPython RP2040 device via serial."""
     def __init__(self, 
                  serial_port: str, 
                  micropython_version: MicroPython_Version = MicroPython_Version.v1_21_0, 
-                 start_closed: bool=False, 
+                 start_closed: bool=False,
+                 auto_halt: bool=True,
+                 skip_coms_test: bool=False,
                  serial_read_timeout: int=15, 
                  serial_write_timeout: Optional[int]=None
                  ):
+        """
+        New RP2040 device running MicroPython.
+        args:
+            serial_port (str): serial device of Pico
+            micropython_version (str): Version of MicroPython on device. Does not currently matter
+            start_closed (bool): Creates object without opening the serial port
+            auto_halt (bool): Automatically stop exec and soft reboot the device when creating object
+            skip_coms_test (bool) : Skip a coms test that verifies the coms is good between the computer and Pico
+            serial_read_timeout (int): Read timeout supplied to serial.Serial
+            serial_write_timeout (int): Write timeout supplied to serial.Serial
+        """
         self._serial_read_timeout = serial_read_timeout
         self._serial_write_timeout = serial_write_timeout
         self._upy_version = micropython_version
         self._serial_port = serial_port
         self._serial = None
         if not start_closed:
+            # Open the serial device here
             self._open_serial()
+
+            # Send stop and reboot to reset Pico state
+            if auto_halt:
+                self.send_stop_exec()
+                self.send_soft_reboot()
+
+            # Run a sanity test to ensure the serial device responds as expected (e.g. does it run micropython)
+            if not skip_coms_test:
+                if not self.coms_test():
+                    raise IOError("Did not get expected response from device during coms test")
 
     def _open_serial(self):
         """Initializes the serial connection with the specified parameters."""
@@ -112,14 +136,27 @@ class RP2040:
         response = response.lstrip()
 
         if platform.system() == "Windows":
+            # Windows does odd things with line endings
             response = response.replace("\r\r\n", "\n")
         if response.startswith(BLOCK_PROMPT):
-            response = response[6:]
+            # Block prompt can add '...', spaces and newlines
+            try:
+                # Sometimes this part can be a char out!
+                if response[5].isspace():
+                    response = response[6:]
+                else:
+                    response = response[5:]
+            except IndexError as err:
+                raise ValueError(f'Unable to parse response :: {err}')
         if response.endswith("\r\n"):
             response = response[:-2] # Take only the last newline off
         return response
 
-    def _communicate(self, command: str, is_block_command: bool = False, ignore_response: bool = False) -> Optional[str]:
+    def _communicate(self,
+                     command: str, 
+                     is_block_command: bool = False, 
+                     ignore_response: bool = False
+                     ) -> Optional[str]:
         """Handles the sending and receiving of a command to/from the MicroPython device."""
         command += EOM_MARKER + TERMINATOR
         if is_block_command:
@@ -151,8 +188,6 @@ class RP2040:
         self.send_stop_exec()
         self.send_enter()
 
-    # TODO - Do we need the time.sleep here?
-
     def send_stop_exec(self):
         """ Send keyboard interrupt to stop execution """
         self._serial_write(b'\x03')  # Ctrl+C -> stop execution
@@ -166,8 +201,7 @@ class RP2040:
     def send_enter(self):
         """ Send a blank enter to exit a block statement """
         self._serial_write(b'\r\n')
-        time.sleep(0.2) # Give the device time to respond and be flushed
-
+        
     def coms_test(self):
         response = self._communicate("x = 1 + 1; print(x)")
         return response == "2"
@@ -211,10 +245,11 @@ class RP2040:
         return self._communicate(f'exec(open("{file_name}").read())', ignore_response=True)
 
     def start_repl(self):
+        # import readline to support familiar command input (arrows, history)
         if platform.system == "Windows":
             import pyreadline3
         else:
-            import readline # Required import to support cursor navigation with inputs
+            import readline
 
         self.send_stop_exec()
         self.send_soft_reboot()
@@ -229,7 +264,7 @@ class RP2040:
             command = f"{raw_command}\r" # Add an enter to submit
             self._serial_write(command.encode("utf-8"))
             prompt = self._repl_read()
+            # Sometimes a backspace character appears at the left, remove it
             prompt = re.sub(RE_MATCH_BACKSPACE_BEGINNING, "", prompt)
-            #prompt = self._serial_read(eor_token=end_token).decode("utf-8")
-            # TODO do another quicker read to see if there is anything in the in-buffer, Ensures we caught the end rather than some output from command
+            # Remove the command from the response
             prompt = prompt.replace(raw_command.strip(), "").strip()

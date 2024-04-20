@@ -1,1 +1,1 @@
-from .upy import RP2040
+from .upy import Pico

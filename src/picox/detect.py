@@ -5,7 +5,7 @@ from typing import List, Optional
 import serial
 import serial.tools.list_ports
 
-from .upy import RP2040
+from .upy import Pico
 
 
 def get_serial_ports() -> List[str]:
@@ -32,7 +32,7 @@ def is_pico(device: str):
         device (str): USB serial device to test
     """
     try:
-        pico = RP2040(device, serial_read_timeout=1, serial_write_timeout=1)
+        pico = Pico(device, serial_read_timeout=1, serial_write_timeout=1)
         pico.send_stop_exec()
         pico.send_enter()
         return pico.coms_test()
@@ -49,9 +49,11 @@ def search_ports_for_pico(serial_devices: List[str]) -> List[str]:
     else:
         return None
     
-def detect_first_pico() -> Optional[str]:
+def get_first_pico_serial() -> Optional[str]:
     """
     Get ports + detect pico
+    returns:
+        str: serial device name or None
     """
     serial_devices = get_serial_ports()
     for device in serial_devices:
@@ -60,7 +62,7 @@ def detect_first_pico() -> Optional[str]:
     else:
         return None
 
-def detect_all_pico() -> List:
+def get_all_pico_serial() -> List:
     """
     Get ports then return all detected pico devices
     """

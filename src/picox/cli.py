@@ -1,12 +1,12 @@
 import argparse
 
-from .upy import RP2040
+from .upy import Pico
 from .logconfig import LOGGER
-from .detect import detect_all_pico, detect_first_pico
+from .detect import get_all_pico_serial, get_first_pico_serial
 
 def get_args():
     parser = argparse.ArgumentParser(description="picox")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    # parser.add_argument("-v", "--verbose", action="store_true")
 
     subparsers  = parser.add_subparsers(dest="command")
 
@@ -40,45 +40,34 @@ def get_args():
 
     return parser.parse_args()
 
-def init_rp2040(device, verbose=False):
-    pico = RP2040(device, verbose=verbose)
-    pico.send_stop_exec()
-    pico.send_enter()
-    if not pico.coms_test():
-        LOGGER.error("Coms test failed. Try re-inserting the Pi Pico USB")
-    return pico
-
 def main():
     args = get_args()
+    pico = None
+    if device := getattr(args, "device", None):
+        pico = Pico(device)
 
     match args.command:
         case "repl":
-            pico = init_rp2040(args.device)
             pico.start_repl()
         case "ls":
-            pico = init_rp2040(args.device)
             for file in pico.get_file_list():
                 print(file) # Print to stdout
         case "stop":
-            pico = init_rp2040(args.device)
-            pico.send_stop_exec()
+            pass # Technically just opening it successfully will 
         case "upload":
-            pico = init_rp2040(args.device)
             with open(args.read_file, "rb") as read_file:
                 pico.upload_file(read_file, args.file, overwrite=args.overwrite)
         case "download":
-            pico = init_rp2040(args.device)
             with open(args.save_file, "w") as save_file:
                 pico.download_file(args.file, save_file)
         case "exec":
-            pico = init_rp2040(args.device)
             LOGGER.debug(f"Executing {args.file}")
             pico.execute_file(args.file)
         case "detect":
             if args.all:
-                detected = detect_all_pico()
+                detected = get_all_pico_serial()
             else:
-                detected = detect_first_pico()
+                detected = get_first_pico_serial()
             print(detected) # show device to stdout
 
 if __name__ == "__main__":
