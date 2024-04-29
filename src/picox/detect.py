@@ -4,15 +4,17 @@ from typing import List, Optional
 
 import serial
 import serial.tools.list_ports
+from serial.serialutil import SerialException
 
 from .upy import Pico
+from .logconfig import LOGGER
 
 
 def get_serial_ports() -> List[str]:
     """
     Get USB serial devices for your OS
     raises:
-        NotImplimentedError - If not Windows, Linux or macOS
+        NotImplementedError - If not Windows, Linux or macOS
     """
     match platform.system():
         case "Windows":
@@ -33,10 +35,12 @@ def is_pico(device: str):
     """
     try:
         pico = Pico(device, serial_read_timeout=1, serial_write_timeout=1)
-        pico.send_stop_exec()
+        pico.send_stop_exec() # TODO do we even need this anymore?
         pico.send_enter()
         return pico.coms_test()
     except Exception as err:
+        if "[Errno 13]" in str(err):
+            LOGGER.warning(f"[{device}] :: Permission denied!")
         return False
 
 def search_ports_for_pico(serial_devices: List[str]) -> List[str]:
