@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "picox"
-version = "1.1.4"
+version = "1.2.0"
 authors = [{name = "Harvey"}]
 description = "Tools for working with a Rasbperry Pi Pico running MicroPython"
 readme = "README.md"

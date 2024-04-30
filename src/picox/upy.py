@@ -237,7 +237,7 @@ class Pico:
             raise FileNotFoundError(f"File '{pico_filename}' does not exist on Pico")
 
         file_data = self._communicate(
-            f'try: with open("{pico_filename}", "r") as f: print(f.read(), end="") except Exception as e: print("{download_failed_marker}str(e)")',
+            f"exec(\"try:\\n  with open('{pico_filename}', 'r') as f: print(f.read(), end='')\\nexcept Exception as e: print(f'{download_failed_marker}{{str(e)}}')\")",
             is_block_command=True
         )
         if file_data.startswith(download_failed_marker):
@@ -261,7 +261,8 @@ class Pico:
             f'with open("{pico_file_path}", "wb") as f: f.write({local_data})',
             is_block_command=True
         )
-        if "Exception" in result:
+        LOGGER.debug(f"Response from upload: {result}")
+        if "Traceback" in result:
             LOGGER.error(f"Pico raised Exception during upload :: {result}")
 
     def execute_file(self, file_name):

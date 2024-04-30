@@ -4,7 +4,6 @@ from typing import List, Optional
 
 import serial
 import serial.tools.list_ports
-from serial.serialutil import SerialException
 
 from .upy import Pico
 from .logconfig import LOGGER
