@@ -23,6 +23,7 @@ def get_args():
     download_parser = subparsers.add_parser("download", help="Download a file")
     exec_parser     = subparsers.add_parser("exec", help="Execute a file")
     stop_parser     = subparsers.add_parser("stop", help="Send a stop to Pico")
+    attach_parser   = subparsers.add_parser('attach', help="Attach to console output from Pico")
 
     detect_parser.add_argument("--all", action="store_true", help="Detect all pico devices and return a list")
 
@@ -44,21 +45,31 @@ def get_args():
 
     stop_parser.add_argument("device", help="Serial device")
 
+    attach_parser.add_argument('device', help="Serial device")
+
     # Re-parse with the remaining arguments
     args = parser.parse_args(remaining_argv, namespace=args)
     
     return args
 
+
 def main():
-    LOGGER.setLevel(logging.ERROR)
+    LOGGER.setLevel(logging.INFO)
     args = get_args()
 
     if args.verbose:
         LOGGER.setLevel(logging.DEBUG)
 
-    pico = None
-    if device := getattr(args, "device", None):
-        pico = Pico(device)
+    attach_only = args.command in ["attach"]
+
+    if device := getattr(args, 'device', False):
+        pico = Pico(
+            serial_port=device,
+            skip_coms_test=attach_only, # Skip testing coms if code should be already running
+            skip_stop_exec=attach_only,
+        )
+    else:
+        pico = False
 
     match args.command:
         case "repl":
@@ -83,6 +94,11 @@ def main():
             else:
                 detected = get_first_pico_serial()
             print(detected) # show device to stdout
+        case "attach":
+            try:
+                pico.start_console_attach()
+            except KeyboardInterrupt:
+                LOGGER.info("Received KeyboardInterrupt. Exiting...")
 
 if __name__ == "__main__":
     main()

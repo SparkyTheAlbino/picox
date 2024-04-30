@@ -34,14 +34,17 @@ def is_pico(device: str):
         device (str): USB serial device to test
     """
     try:
-        pico = Pico(device, serial_read_timeout=1, serial_write_timeout=1)
-        pico.send_stop_exec() # TODO do we even need this anymore?
-        pico.send_enter()
-        return pico.coms_test()
+        Pico(
+            device,
+            serial_read_timeout=1,
+            serial_write_timeout=1,
+        )
     except Exception as err:
         if "[Errno 13]" in str(err):
             LOGGER.warning(f"[{device}] :: Permission denied!")
         return False
+    else:
+        return True
 
 def search_ports_for_pico(serial_devices: List[str]) -> List[str]:
     """

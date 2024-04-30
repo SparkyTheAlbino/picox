@@ -32,7 +32,7 @@ class Pico:
                  serial_port: str, 
                  micropython_version: MicroPython_Version = MicroPython_Version.v1_21_0, 
                  start_closed: bool=False,
-                 auto_halt: bool=True,
+                 skip_stop_exec: bool=False,
                  skip_coms_test: bool=False,
                  serial_read_timeout: int=15, 
                  serial_write_timeout: Optional[int]=None
@@ -43,7 +43,7 @@ class Pico:
             serial_port (str): serial device of Pico
             micropython_version (str): Version of MicroPython on device. Does not currently matter
             start_closed (bool): Creates object without opening the serial port
-            auto_halt (bool): Automatically stop exec and soft reboot the device when creating object
+            skip_stop_exec (bool): Skip stopping execution of pico running code. Good if your Pico has a main autoexec script
             skip_coms_test (bool) : Skip a coms test that verifies the coms is good between the computer and Pico
             serial_read_timeout (int): Read timeout supplied to serial.Serial
             serial_write_timeout (int): Write timeout supplied to serial.Serial
@@ -58,9 +58,8 @@ class Pico:
             self._open_serial()
 
             # Send stop and reboot to reset Pico state
-            if auto_halt:
-                self.send_stop_exec()
-                self.send_soft_reboot()
+            if not skip_stop_exec:
+                self.stop_exec()
 
             # Run a sanity test to ensure the serial device responds as expected (e.g. does it run micropython)
             if not skip_coms_test:
@@ -81,6 +80,16 @@ class Pico:
         response = self._serial.read_until(eor_token.encode("utf8")).strip()
         LOGGER.debug(f"RECV {self._serial_port} :: {response}")
         return response
+    
+    def _serial_read_endless(self):
+        """Endless read from serial, useful for viewing all console output"""
+        self._serial.timeout = 0
+        while True:
+            bytes_to_read = self._serial.in_waiting
+            if data_from_serial := self._serial.read(bytes_to_read).decode("utf-8"):
+                print(f"{data_from_serial}")
+            else:
+                time.sleep(0.1)
 
     def _repl_read(self, wait_interval: float = 0.2) -> str:
         """Attempts to read from the REPL prompt"""
@@ -184,21 +193,31 @@ class Pico:
             return ast.literal_eval(string_list) if string_list else []
 
     def stop_exec(self):
-        """ Stop execution and press enter """
-        self.send_stop_exec()
-        self.send_enter()
+        """ Stop execution by a combinatino of reboot and Ctrl+C. Flushes buffers afterwards to get device in known state """
+        self._send_stop_exec(quantity=5)
+        self._send_soft_reboot()
+        time.sleep(0.2)
+        self._send_stop_exec(quantity=5) # If there is an auto boot script, this will clear it
+        time.sleep(0.2)
+        self._send_enter()
+        self._serial.reset_input_buffer()
+        self._serial.reset_output_buffer()
 
-    def send_stop_exec(self):
-        """ Send keyboard interrupt to stop execution """
-        self._serial_write(b'\x03')  # Ctrl+C -> stop execution
-        time.sleep(0.2) # Give the device time to respond and be flushed
+    def _send_stop_exec(self, quantity=1):
+        """ Send keyboard interrupt to stop execution 
+        args:
+            quantity (int) : How many Ctrl+C to send
+        """
+        LOGGER.debug("Sending stop exec (Ctrl+C) to Pico")
+        for _ in range(quantity):
+            self._serial_write(b'\x03')  # Ctrl+C -> stop execution
 
-    def send_soft_reboot(self):
+    def _send_soft_reboot(self):
         """ Send soft reboot command (Ctrl+D) """
+        LOGGER.debug("Sending soft reboot to Pico (Ctrl+D)")
         self._serial_write(b'\x04')  # Ctrl+D -> Soft reboot if nothing executing and blank REPL
-        time.sleep(0.2) # Give the device time to respond and be flushed
 
-    def send_enter(self):
+    def _send_enter(self):
         """ Send a blank enter to exit a block statement """
         self._serial_write(b'\r\n')
         
@@ -212,15 +231,19 @@ class Pico:
 
     def download_file(self, pico_filename, save_fp: IO[str]):
         """ Download a file from the Pico to the host """
+        download_failed_marker = f"DOWNLOAD{EOR_MARKER}ERROR"
 
         if pico_filename not in self.get_file_list():
             raise FileNotFoundError(f"File '{pico_filename}' does not exist on Pico")
 
         file_data = self._communicate(
-            f'with open("{pico_filename}", "r") as f: print(f.read(), end="")',
+            f'try: with open("{pico_filename}", "r") as f: print(f.read(), end="") except Exception as e: print("{download_failed_marker}str(e)")',
             is_block_command=True
         )
+        if file_data.startswith(download_failed_marker):
+            LOGGER.error(f"Upload was not successful: {file_data.replace(download_failed_marker, '')}")
         save_fp.write(file_data)
+        #TODO better exception handling...
 
     def upload_file(self, local_fp: IO[bytes], pico_file_path, overwrite=False):
         """ Upload a file from the host to the Pico """
@@ -234,15 +257,21 @@ class Pico:
         local_data = local_fp.read()
 
         # Upload the file to the pico
-        self._communicate(
+        result = self._communicate(
             f'with open("{pico_file_path}", "wb") as f: f.write({local_data})',
             is_block_command=True
         )
+        if "Exception" in result:
+            LOGGER.error(f"Pico raised Exception during upload :: {result}")
 
     def execute_file(self, file_name):
         LOGGER.debug(f"Executing file {file_name}")
-        self.send_stop_exec()
+        self.stop_exec()
         return self._communicate(f'exec(open("{file_name}").read())', ignore_response=True)
+
+    def start_console_attach(self):
+        LOGGER.info(f"Starting console read from device {self._serial_port}...")
+        self._serial_read_endless()
 
     def start_repl(self):
         # import readline to support familiar command input (arrows, history)
@@ -251,8 +280,7 @@ class Pico:
         else:
             import readline
 
-        self.send_stop_exec()
-        self.send_soft_reboot()
+        self.stop_exec()
 
         # Read serial here to get prompt
         prompt = self._serial_read(eor_token=UPY_PROMPT).decode("utf-8")
