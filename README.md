@@ -13,6 +13,7 @@ Windows, Linux and macOS are supported.
 - REPL can timeout on long operations such as sleep. Its in the nature of how it scans for the end
 - Line endings of files coming out can get a little strange. watch out if there are som extra spaces etc. Best bet is to ensure you always work in the same line endings
 - File operations do not include folder operations __yet__
+- Most commands will halt what is running on the pico. Such as a detect will stop execution in order to get a good communication test. For a more manual detection, you can use `picox attach <device>` to try and stream stdout from the pico
 
 ## Installation
 Install via `pip`:
@@ -39,6 +40,11 @@ pico detect --all
 ### REPL session on Pi Pico
 ``` bash
 picox repl /dev/ttyUSB0
+```
+
+### View console output from already running pico
+``` bash
+picox attach /dev/ttyUSB0
 ```
 
 ### Listing files on Pi Pico:

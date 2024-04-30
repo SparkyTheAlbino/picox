@@ -1,24 +1,31 @@
 import argparse
+import logging
 
 from .upy import Pico
 from .logconfig import LOGGER
 from .detect import get_all_pico_serial, get_first_pico_serial
 
+import argparse
+
 def get_args():
     parser = argparse.ArgumentParser(description="picox")
-    # parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-v", "--verbose", action="store_true")
 
-    subparsers  = parser.add_subparsers(dest="command")
+    # parse global flags first
+    args, remaining_argv = parser.parse_known_args()
 
-    detect_parser   = subparsers.add_parser("detect",   help="Detect pico on serial")
-    repl_parser     = subparsers.add_parser("repl",     help="Start REPL session on Pi Pico")
-    ls_parser       = subparsers.add_parser("ls",       help="Directory listing on Pi Pico")
-    upload_parser   = subparsers.add_parser("upload",   help="Upload a file")
+    subparsers = parser.add_subparsers(dest="command")
+
+    detect_parser   = subparsers.add_parser("detect", help="Detect pico on serial")
+    repl_parser     = subparsers.add_parser("repl", help="Start REPL session on Pi Pico")
+    ls_parser       = subparsers.add_parser("ls", help="Directory listing on Pi Pico")
+    upload_parser   = subparsers.add_parser("upload", help="Upload a file")
     download_parser = subparsers.add_parser("download", help="Download a file")
-    exec_parser     = subparsers.add_parser("exec",     help="Execute a file")
-    stop_parser     = subparsers.add_parser("stop",     help="Send a stop to Pico")
+    exec_parser     = subparsers.add_parser("exec", help="Execute a file")
+    stop_parser     = subparsers.add_parser("stop", help="Send a stop to Pico")
+    attach_parser   = subparsers.add_parser('attach', help="Attach to console output from Pico")
 
-    detect_parser.add_argument("--all", action="store_true", default=False, help="Detecta all pico devices and returna list")
+    detect_parser.add_argument("--all", action="store_true", help="Detect all pico devices and return a list")
 
     repl_parser.add_argument("device", help="Serial device")
 
@@ -38,13 +45,31 @@ def get_args():
 
     stop_parser.add_argument("device", help="Serial device")
 
-    return parser.parse_args()
+    attach_parser.add_argument('device', help="Serial device")
+
+    # Re-parse with the remaining arguments
+    args = parser.parse_args(remaining_argv, namespace=args)
+    
+    return args
+
 
 def main():
+    LOGGER.setLevel(logging.INFO)
     args = get_args()
-    pico = None
-    if device := getattr(args, "device", None):
-        pico = Pico(device)
+
+    if args.verbose:
+        LOGGER.setLevel(logging.DEBUG)
+
+    attach_only = args.command in ["attach"]
+
+    if device := getattr(args, 'device', False):
+        pico = Pico(
+            serial_port=device,
+            skip_coms_test=attach_only, # Skip testing coms if code should be already running
+            skip_stop_exec=attach_only,
+        )
+    else:
+        pico = False
 
     match args.command:
         case "repl":
@@ -69,6 +94,11 @@ def main():
             else:
                 detected = get_first_pico_serial()
             print(detected) # show device to stdout
+        case "attach":
+            try:
+                pico.start_console_attach()
+            except KeyboardInterrupt:
+                LOGGER.info("Received KeyboardInterrupt. Exiting...")
 
 if __name__ == "__main__":
     main()
