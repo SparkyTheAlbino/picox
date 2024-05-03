@@ -47,6 +47,11 @@ picox repl /dev/ttyUSB0
 picox attach /dev/ttyUSB0
 ```
 
+### Soft reboot pico
+``` bash
+picox reboot /dev/ttyUSB0
+```
+
 ### Listing files on Pi Pico:
 ``` bash
 picox ls /dev/ttyUSB0

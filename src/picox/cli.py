@@ -24,6 +24,7 @@ def get_args():
     exec_parser     = subparsers.add_parser("exec", help="Execute a file")
     stop_parser     = subparsers.add_parser("stop", help="Send a stop to Pico")
     attach_parser   = subparsers.add_parser('attach', help="Attach to console output from Pico")
+    reboot_parser   = subparsers.add_parser('reboot', help="Soft reboot Pico")
 
     detect_parser.add_argument("--all", action="store_true", help="Detect all pico devices and return a list")
 
@@ -46,6 +47,8 @@ def get_args():
     stop_parser.add_argument("device", help="Serial device")
 
     attach_parser.add_argument('device', help="Serial device")
+
+    reboot_parser.add_argument("device", help="Serial device")
 
     # Re-parse with the remaining arguments
     args = parser.parse_args(remaining_argv, namespace=args)
@@ -78,7 +81,7 @@ def main():
             for file in pico.get_file_list():
                 print(file) # Print to stdout
         case "stop":
-            pass # Technically just opening it successfully will 
+            pass # Technically just opening it successfully will stop it
         case "upload":
             with open(args.read_file, "rb") as read_file:
                 pico.upload_file(read_file, args.file, overwrite=args.overwrite)
@@ -99,6 +102,8 @@ def main():
                 pico.start_console_attach()
             except KeyboardInterrupt:
                 LOGGER.info("Received KeyboardInterrupt. Exiting...")
+        case "reboot":
+            pico.send_soft_reboot()
 
 if __name__ == "__main__":
     main()
