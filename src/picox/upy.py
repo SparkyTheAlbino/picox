@@ -195,7 +195,7 @@ class Pico:
     def stop_exec(self):
         """ Stop execution by a combinatino of reboot and Ctrl+C. Flushes buffers afterwards to get device in known state """
         self._send_stop_exec(quantity=5)
-        self._send_soft_reboot()
+        self.send_soft_reboot()
         time.sleep(0.2)
         self._send_stop_exec(quantity=5) # If there is an auto boot script, this will clear it
         time.sleep(0.2)
@@ -212,7 +212,7 @@ class Pico:
         for _ in range(quantity):
             self._serial_write(b'\x03')  # Ctrl+C -> stop execution
 
-    def _send_soft_reboot(self):
+    def send_soft_reboot(self):
         """ Send soft reboot command (Ctrl+D) """
         LOGGER.debug("Sending soft reboot to Pico (Ctrl+D)")
         self._serial_write(b'\x04')  # Ctrl+D -> Soft reboot if nothing executing and blank REPL
@@ -243,7 +243,6 @@ class Pico:
         if file_data.startswith(download_failed_marker):
             LOGGER.error(f"Upload was not successful: {file_data.replace(download_failed_marker, '')}")
         save_fp.write(file_data)
-        #TODO better exception handling...
 
     def upload_file(self, local_fp: IO[bytes], pico_file_path, overwrite=False):
         """ Upload a file from the host to the Pico """
