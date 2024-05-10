@@ -9,7 +9,8 @@ from itertools import cycle
 import serial
 
 from .logconfig import LOGGER
-
+from .commands.compiled import DOWNLOAD_FILE
+from .exceptions import RemotePicoException
 
 # Constants for communication patterns
 TERMINATOR = '\r\n'  
@@ -19,6 +20,7 @@ EOR_MARKER = "---f81b734f-7be3-4747-ae0b-c449006b33dd---"
 EOR_TOKEN  = f"{EOR_MARKER}{UPY_PROMPT}"
 EOR_MARKER_COMMAND = f";print('{EOR_MARKER}')"
 EOM_MARKER = f';pass;pass;pass;pass{EOR_MARKER_COMMAND}'
+FAILED_MARKER = f"FAILED---0dfe99a5-4543-4fc0-8986-5d7fd5e51d7b---ERROR"
 RE_MATCH_BACKSPACE_BEGINNING = re.compile('^' + re.escape("\x08") + '+')
 
 class MicroPython_Version(Enum):
@@ -175,6 +177,11 @@ class Pico:
 
         if not ignore_response:
             if response := self._serial_read().decode():
+                # Did the response show an exception on the Pico?
+                if response.endswith(FAILED_MARKER):
+                    raise RemotePicoException("Detected exception from device", response)
+                
+                # Good response, Get the payload and return it
                 return self._clean_response(response)
             else:
                 raise Exception("No response when expected")
@@ -231,18 +238,19 @@ class Pico:
 
     def download_file(self, pico_filename, save_fp: IO[str]):
         """ Download a file from the Pico to the host """
-        download_failed_marker = f"DOWNLOAD{EOR_MARKER}ERROR"
 
         if pico_filename not in self.get_file_list():
             raise FileNotFoundError(f"File '{pico_filename}' does not exist on Pico")
 
-        file_data = self._communicate(
-            f"exec(\"try:\\n  with open('{pico_filename}', 'r') as f: print(f.read(), end='')\\nexcept Exception as e: print(f'{download_failed_marker}{{str(e)}}')\")",
-            is_block_command=True
-        )
-        if file_data.startswith(download_failed_marker):
-            LOGGER.error(f"Upload was not successful: {file_data.replace(download_failed_marker, '')}")
-        save_fp.write(file_data)
+        try:
+            file_data = self._communicate(
+                DOWNLOAD_FILE(pico_filename),
+                is_block_command=True
+            )
+        except RemotePicoException as err:
+            LOGGER.error(f"Upload was not successful: {err}")
+        else:
+            save_fp.write(file_data)
 
     def upload_file(self, local_fp: IO[bytes], pico_file_path, overwrite=False):
         """ Upload a file from the host to the Pico """
