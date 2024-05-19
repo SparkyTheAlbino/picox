@@ -1,11 +1,12 @@
 import argparse
 import logging
+import sys
+from pathlib import Path
 
 from .upy import Pico
-from .logconfig import LOGGER
 from .detect import get_all_pico_serial, get_first_pico_serial
 
-import argparse
+LOGGER = logging.getLogger(__name__)
 
 def get_args():
     parser = argparse.ArgumentParser(description="picox")
@@ -84,10 +85,18 @@ def main():
             pass # Technically just opening it successfully will stop it
         case "upload":
             with open(args.read_file, "rb") as read_file:
-                pico.upload_file(read_file, args.file, overwrite=args.overwrite)
+                try:
+                    pico.upload_file(read_file, args.file, overwrite=args.overwrite)
+                except FileExistsError as err:
+                    LOGGER.error(err)
+                    sys.exit(2)
         case "download":
-            with open(args.save_file, "w") as save_file:
-                pico.download_file(args.file, save_file)
+            try:
+                with open(args.save_file, "w") as save_file:
+                    pico.download_file(args.file, save_file)
+            except FileNotFoundError as err:
+                LOGGER.error(err)
+                sys.exit(1)
         case "exec":
             LOGGER.debug(f"Executing {args.file}")
             pico.execute_file(args.file)

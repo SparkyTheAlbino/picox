@@ -1,13 +1,14 @@
 import glob
 import platform
+import logging
 from typing import List, Optional
 
 import serial
 import serial.tools.list_ports
 
 from .upy import Pico
-from .logconfig import LOGGER
 
+LOGGER = logging.getLogger(__name__)
 
 def get_serial_ports() -> List[str]:
     """

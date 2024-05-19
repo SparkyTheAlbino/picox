@@ -16,4 +16,4 @@ class RemotePicoException(Exception):
         """
         Return the string representation of the exception,
         """
-        return f"{self.args[0]}\nRemote Exception:\n{self.remote_traceback}"
+        return f"{self.args[0]}\nRemote Exception:\n{self.remote_exception}"

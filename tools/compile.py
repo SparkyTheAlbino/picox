@@ -25,7 +25,7 @@ if __name__ == "__main__":
             params = extract_parameters(result)
             output_lines.append("")
             output_lines.append(f"# {raw_command_file}")
-            output_lines.append(f"{raw_command_file.stem} = lambda {",".join(params)} : f\"{result}\"")
+            output_lines.append(f"{raw_command_file.stem} = lambda {", ".join(params)} : f\"{result}\"")
 
     # Output file
     with output_file.open("w") as output_file_fp:
