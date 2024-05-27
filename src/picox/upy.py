@@ -2,8 +2,6 @@ import ast
 import time
 import re
 import platform
-import logging
-import base64
 from enum import Enum
 from typing import IO, Optional, List
 from pathlib import Path
@@ -11,10 +9,9 @@ from io import StringIO
 
 import serial
 
-from .commands.compiled import DOWNLOAD_FILE, UPLOAD_FILE
 from .exceptions import RemotePicoException
-
-LOGGER = logging.getLogger(__name__)
+from .logconfig import LOGGER
+from .commands.compiled import DOWNLOAD_FILE, UPLOAD_FILE
 
 # Constants for communication patterns
 TERMINATOR = '\r\n'  
@@ -26,6 +23,7 @@ EOR_MARKER_COMMAND = f";print('{EOR_MARKER}')"
 EOM_MARKER = f';pass;pass;pass;pass{EOR_MARKER_COMMAND}'
 FAILED_MARKER = f"FAILED---0dfe99a5-4543-4fc0-8986-5d7fd5e51d7b---ERROR"
 RE_MATCH_BACKSPACE_BEGINNING = re.compile('^' + re.escape("\x08") + '+')
+
 
 class MicroPython_Version(Enum):
     """Enumeration of supported MicroPython versions."""
@@ -325,9 +323,6 @@ class Pico:
         self.stop_exec()
         time.sleep(0.5)
 
-        #TODO odd responses - sometimes half from previous message. can we stop stripping form output too?
-        # Try "T" -> yuo have to press enter again
-        # Read serial here to get prompt. Look just for mpy prompt
         prompt = self._serial_read(end_markers=[UPY_PROMPT]).decode("utf-8")
         self._serial.reset_output_buffer()
         self._serial.reset_input_buffer()

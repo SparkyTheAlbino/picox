@@ -1,0 +1,50 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  pr-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install picox
+      run: |
+        pip install .
+
+    - name: Check version has been updated
+      run: |
+        git fetch origin master:master
+        MASTER_VERSION=$(git show master:pyproject.toml | grep version | head -1 | awk -F '"' '{print $2}')
+        PR_VERSION=$(cat pyproject.toml | grep version | head -1 | awk -F '"' '{print $2}')
+        if [ "$PR_VERSION" = "$MASTER_VERSION" ]; then
+          echo "Version check failed: Version number has NOT changed!"
+          exit 1
+        else
+          echo "New version number detected $PR_VERSION"
+        fi
+
+    - name: Run test compile commands
+      run: |
+        # Run compile on raw commands
+        python tools/compile.py src/raw_commands/ TEST_COMPILED.py
+
+        # Check files match, ignoring first line (as it is the datetime)
+        tail -n +2 TEST_COMPILED.py > f1.py
+        tail -n +2 src/picox/commands/compiled.py > f2.py
+        if diff f1.py f2.py; then
+            echo "Compiled commands up to date!"
+        else
+            echo "Files do not match."
+            exit 1
+        fi

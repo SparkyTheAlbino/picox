@@ -2,11 +2,20 @@ import token
 import tokenize
 import re
 from io import StringIO
+from typing import IO, Union
 
 from .upy import FAILED_MARKER
 
 
-def replace_braces(match):
+def replace_braces(match) -> str:
+    """
+    Fixup curly braces within an f-string by doubling them. This stops them from being interpreted
+    as an argument to the raw command
+    Args:
+        match (str) : Matched f-string
+    returns:
+        str
+    """
     # Before and after are the quotes that will remain unchanged
     before, f_content, after = match.groups()
     # Replace the curly braces in the f-string content
@@ -14,7 +23,10 @@ def replace_braces(match):
     modified_content = re.sub(r'(?<!\})\}(?!\})', '}}', modified_content)
     return f'{before}{modified_content}{after}'
 
-def fix_fstring_braces(source):
+def fix_fstring_braces(source: str):
+    """
+    Pass in a string
+    """
     # Regex to match an f-string
     f_string_pattern = r'(f[rfb]?[\'"])(.*?)([\'"])'
 
@@ -22,7 +34,7 @@ def fix_fstring_braces(source):
     modified_code = re.sub(f_string_pattern, replace_braces, source, flags=re.DOTALL)
     return modified_code
 
-def remove_comments(source):
+def remove_comments(source: Union[IO[bytes], str]):
     """
     Removes comments from Python source code while attempting to preserve line structure.
 
@@ -62,7 +74,7 @@ def remove_comments(source):
 
     return cleaned_code
 
-def fix_lines(source):
+def fix_lines(source: Union[IO[bytes], str]):
     """
     Read a file line by line, stripping existing line endings and appending '\n' to each line.
     Also performs a one level indent to all lines
@@ -90,10 +102,17 @@ def fix_lines(source):
     
     return normalized_content
 
-def compile_file_to_command(file_data) -> str:
+def compile_file_to_command(file_data: Union[IO[bytes], str]) -> str:
+    """
+    Compiles an open file in "r" mode into a str which is a one line lambda function of the entire file
+    The resulting function from the file wraps the script in a try/except with known failure marker and
+    an `exec()`. This function correctly escapes quotes, f-string curly brackets, strips newlines and fixes
+    line endings
+    Args:
+        file_data (IO[bytes]) : file pointer to script to compile into a wrapped lambda
+    """
     if isinstance(file_data, str):
         file_data = StringIO(file_data)
-        
     raw_command = file_data.read()
 
     raw_command = remove_comments(raw_command)

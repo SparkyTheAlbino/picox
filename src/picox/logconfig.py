@@ -1,7 +1,13 @@
 import logging
 import sys
 
-def get_package_logger():
+def setup_logger() -> logging.Logger:
+    """
+    Configure a Logger in the style of this package
+    Two stream handlers are defined to split stderr and stdout
+    returns:
+        logging.Logger
+    """
     formatter = logging.Formatter('%(levelname)s: %(message)s')
 
     logger = logging.getLogger(__name__)
@@ -22,3 +28,6 @@ def get_package_logger():
     logger.addHandler(stdout_handler)
     logger.addHandler(stderr_handler)
     return logger
+
+
+LOGGER = setup_logger()

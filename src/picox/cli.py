@@ -5,8 +5,8 @@ from pathlib import Path
 
 from .upy import Pico
 from .detect import get_all_pico_serial, get_first_pico_serial
+from .logconfig import LOGGER
 
-LOGGER = logging.getLogger(__name__)
 
 def get_args():
     parser = argparse.ArgumentParser(description="picox")

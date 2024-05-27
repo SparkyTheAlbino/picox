@@ -1,7 +1,7 @@
 class RemotePicoException(Exception):
     """An exception raised by a Pico device, raised through"""
     
-    def __init__(self, message, remote_exception):
+    def __init__(self, message: str, remote_exception: str):
         """
         Initialize the exception with an error message and the remote traceback.
 
