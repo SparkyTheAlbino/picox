@@ -3,13 +3,15 @@ import time
 import re
 import platform
 from enum import Enum
-from typing import IO, Optional
-from itertools import cycle
+from typing import IO, Optional, List
+from pathlib import Path
+from io import StringIO
 
 import serial
 
+from .exceptions import RemotePicoException
 from .logconfig import LOGGER
-
+from .commands.compiled import DOWNLOAD_FILE, UPLOAD_FILE
 
 # Constants for communication patterns
 TERMINATOR = '\r\n'  
@@ -19,7 +21,9 @@ EOR_MARKER = "---f81b734f-7be3-4747-ae0b-c449006b33dd---"
 EOR_TOKEN  = f"{EOR_MARKER}{UPY_PROMPT}"
 EOR_MARKER_COMMAND = f";print('{EOR_MARKER}')"
 EOM_MARKER = f';pass;pass;pass;pass{EOR_MARKER_COMMAND}'
+FAILED_MARKER = f"FAILED---0dfe99a5-4543-4fc0-8986-5d7fd5e51d7b---ERROR"
 RE_MATCH_BACKSPACE_BEGINNING = re.compile('^' + re.escape("\x08") + '+')
+
 
 class MicroPython_Version(Enum):
     """Enumeration of supported MicroPython versions."""
@@ -60,6 +64,8 @@ class Pico:
             # Send stop and reboot to reset Pico state
             if not skip_stop_exec:
                 self.stop_exec()
+                self._serial.reset_output_buffer()
+                self._serial.reset_input_buffer()
 
             # Run a sanity test to ensure the serial device responds as expected (e.g. does it run micropython)
             if not skip_coms_test:
@@ -75,50 +81,53 @@ class Pico:
             write_timeout=0.5
         )
 
-    def _serial_read(self, eor_token: str = EOR_TOKEN) -> bytearray:
-        """Reads from serial until the end-of-response token is encountered."""
-        response = self._serial.read_until(eor_token.encode("utf8")).strip()
-        LOGGER.debug(f"RECV {self._serial_port} :: {response}")
-        return response
+    def _serial_read(self, end_markers: List[str] = None, command_failed_marker: str = FAILED_MARKER) -> bytearray:
+        """
+        Read from serial byte-by-byte and check if we hit an end marker
+        """
+        if not end_markers:
+            end_markers = [EOR_TOKEN] # Default to end of response marker
+
+        max_failed_marker_occurances = 2 # Failure marker will show once in the command and once again if failed
+        failed_marker_occurances = 0 # Count times encountered failure markers
+
+        end_markers_encoded = list(map(lambda marker: marker.encode('utf-8'), end_markers))
+        failed_marker_encoded = command_failed_marker.encode('utf-8')
+
+        recv_buffer = b''
+        while True:
+            recv_bytes = self._serial.read()
+            if not recv_bytes:
+                break # did not recv any bytes
+
+            recv_buffer += recv_bytes
+            LOGGER.debug(f"RECV(part) {self._serial_port} :: {recv_buffer}")
+
+            # Check if the buffer ends with any of the markers
+            if any(recv_buffer.endswith(end_marker) for end_marker in end_markers_encoded):
+                break
+
+            # Check if the error marker has been hit
+            if recv_buffer.endswith(failed_marker_encoded):
+                failed_marker_occurances += 1
+                if failed_marker_occurances >= max_failed_marker_occurances:
+                    break
+    
+        recv_buffer = recv_buffer.strip()
+        LOGGER.debug(f"RECV {self._serial_port} :: {recv_buffer}")
+        return recv_buffer
     
     def _serial_read_endless(self):
         """Endless read from serial, useful for viewing all console output"""
         self._serial.timeout = 0
         while True:
-            bytes_to_read = self._serial.in_waiting
-            if data_from_serial := self._serial.read(bytes_to_read).decode("utf-8"):
+            if data_from_serial := self._serial.read(self._serial.in_waiting or 1).decode("utf-8"):
                 print(f"{data_from_serial}")
             else:
-                time.sleep(0.1)
-
-    def _repl_read(self, wait_interval: float = 0.2) -> str:
-        """Attempts to read from the REPL prompt"""
-        response = ""
-        end_markers = (UPY_PROMPT, BLOCK_PROMPT)
-        self._serial.timeout = wait_interval
-        start_time = time.monotonic()
-
-        for end_marker in cycle(end_markers):
-            if (time.monotonic() - start_time) > self._serial_read_timeout:
-                break
-            try:
-                response += self._serial_read(eor_token=end_marker).decode("utf-8")
-            except serial.SerialTimeoutException:
-                pass
-            else:
-                time.sleep(0.1)
-                if not self._serial.in_waiting:
-                    break
-
-        self._serial.timeout = self._serial_read_timeout
-        if not response:
-            raise serial.SerialTimeoutException("Timeout while reading from serial.")
-        return response
+                time.sleep(0.05)
 
     def _serial_write(self, command: bytes):
         """Writes a command to the serial port after clearing the input and output buffers."""
-        self._serial.reset_output_buffer()
-        self._serial.reset_input_buffer()
         LOGGER.debug(f"SEND {self._serial_port} :: {command}")
         self._serial.write(command)
 
@@ -171,10 +180,18 @@ class Pico:
         if is_block_command:
             command += TERMINATOR
 
+        self._serial.reset_output_buffer()
+        self._serial.reset_input_buffer()
+
         self._serial_write(command.encode("utf8"))
 
         if not ignore_response:
             if response := self._serial_read().decode():
+                # Did the response show an exception on the Pico?
+                if response.endswith(FAILED_MARKER):
+                    raise RemotePicoException("Detected exception from device", response)
+                
+                # Good response, Get the payload and return it
                 return self._clean_response(response)
             else:
                 raise Exception("No response when expected")
@@ -200,8 +217,6 @@ class Pico:
         self._send_stop_exec(quantity=5) # If there is an auto boot script, this will clear it
         time.sleep(0.2)
         self._send_enter()
-        self._serial.reset_input_buffer()
-        self._serial.reset_output_buffer()
 
     def _send_stop_exec(self, quantity=1):
         """ Send keyboard interrupt to stop execution 
@@ -231,38 +246,55 @@ class Pico:
 
     def download_file(self, pico_filename, save_fp: IO[str]):
         """ Download a file from the Pico to the host """
-        download_failed_marker = f"DOWNLOAD{EOR_MARKER}ERROR"
 
         if pico_filename not in self.get_file_list():
             raise FileNotFoundError(f"File '{pico_filename}' does not exist on Pico")
 
-        file_data = self._communicate(
-            f"exec(\"try:\\n  with open('{pico_filename}', 'r') as f: print(f.read(), end='')\\nexcept Exception as e: print(f'{download_failed_marker}{{str(e)}}')\")",
-            is_block_command=True
-        )
-        if file_data.startswith(download_failed_marker):
-            LOGGER.error(f"Upload was not successful: {file_data.replace(download_failed_marker, '')}")
-        save_fp.write(file_data)
+        try:
+            file_data = self._communicate(
+                DOWNLOAD_FILE(pico_filename)
+            )
+        except RemotePicoException as err:
+            LOGGER.error(f"Upload was not successful: {err}")
+        else:
+            # Fix line endings to \n and write to file!
+            source = StringIO(file_data)
+            normalized_lines = []
+            for line in source:
+                line = line.rstrip('\r\n') + '\n'
+                normalized_lines.append(line)
+            save_fp.write(''.join(normalized_lines))
 
-    def upload_file(self, local_fp: IO[bytes], pico_file_path, overwrite=False):
+    def create_directory(self, path: Path, overwrite=False):
+        if str(path) in self.get_file_list():
+            if not overwrite:
+                raise FileExistsError(f"'{path}' already exists on the Pico. Set overwrite=True to overwrite.")
+        
+        result = self._communicate(f"import os; os.mkdir('{path}')")
+        LOGGER.debug(f"Response from mkdir: {result}")
+        if "Traceback" in result:
+            LOGGER.error(f"Pico raised Exception during upload :: {result}")
+
+    def upload_file(self, local_fp: IO[str], pico_file_path, overwrite=False):
         """ Upload a file from the host to the Pico """
         if pico_file_path in self.get_file_list():
             if not overwrite:
                 raise FileExistsError(f"File '{pico_file_path}' already exists on the Pico. Set overwrite=True to overwrite.")
-            else:
-                self._communicate(f"import os; os.remove('{pico_file_path}')")
 
         # Read the file data from the host
         local_data = local_fp.read()
-
+        if not isinstance(local_data, bytes):
+            raise ValueError(f"File is not open in binary format got {type(local_data)}")
+        
         # Upload the file to the pico
-        result = self._communicate(
-            f'with open("{pico_file_path}", "wb") as f: f.write({local_data})',
-            is_block_command=True
-        )
-        LOGGER.debug(f"Response from upload: {result}")
-        if "Traceback" in result:
-            LOGGER.error(f"Pico raised Exception during upload :: {result}")
+        try:
+            result = self._communicate(
+                UPLOAD_FILE(local_data.hex(), pico_file_path)
+            )
+        except RemotePicoException as err:
+            LOGGER.error(f"Upload was not successful: {err}")
+            raise
+        return result
 
     def execute_file(self, file_name):
         LOGGER.debug(f"Executing file {file_name}")
@@ -274,25 +306,40 @@ class Pico:
         self._serial_read_endless()
 
     def start_repl(self):
+        end_markers = (UPY_PROMPT, BLOCK_PROMPT)
+
         # import readline to support familiar command input (arrows, history)
         if platform.system == "Windows":
             import pyreadline3
         else:
             import readline
 
+        # Get the Pico in a known state
         self.stop_exec()
+        self.send_soft_reboot()
+        time.sleep(0.5)
+        self._serial.reset_output_buffer()
+        self._serial.reset_input_buffer()
+        self.stop_exec()
+        time.sleep(0.5)
 
-        # Read serial here to get prompt
-        prompt = self._serial_read(eor_token=UPY_PROMPT).decode("utf-8")
+        prompt = self._serial_read(end_markers=[UPY_PROMPT]).decode("utf-8")
+        self._serial.reset_output_buffer()
+        self._serial.reset_input_buffer()
         while True:
             raw_command = input(f"{prompt} ")
             if raw_command == "exit()":
                 raise SystemExit
-
+            
             command = f"{raw_command}\r" # Add an enter to submit
             self._serial_write(command.encode("utf-8"))
-            prompt = self._repl_read()
+
+            prompt = self._serial_read(end_markers=end_markers).decode("utf-8")
+            
             # Sometimes a backspace character appears at the left, remove it
             prompt = re.sub(RE_MATCH_BACKSPACE_BEGINNING, "", prompt)
             # Remove the command from the response
-            prompt = prompt.replace(raw_command.strip(), "").strip()
+            prompt = prompt.replace(raw_command.strip(), "", 1).strip()
+
+            self._serial.reset_output_buffer()
+            self._serial.reset_input_buffer()

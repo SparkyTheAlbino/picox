@@ -26,11 +26,13 @@ def get_serial_ports() -> List[str]:
         case _:
             raise NotImplementedError("Unsupported OS")
 
-def is_pico(device: str):
+def is_pico(device: str) -> bool:
     """
     Try to determine if USB serial device is a Pi Pico device
     args:
         device (str): USB serial device to test
+    returns:
+        bool : True/False if MicroPython passed the coms test
     """
     try:
         Pico(
@@ -68,9 +70,11 @@ def get_first_pico_serial() -> Optional[str]:
     else:
         return None
 
-def get_all_pico_serial() -> List:
+def get_all_pico_serial() -> List[str]:
     """
     Get ports then return all detected pico devices
+    returns:
+        List[str] : List of potential Pico serial devices
     """
     serial_devices = get_serial_ports()
     pico_devices = []
