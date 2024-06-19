@@ -11,7 +11,7 @@ import serial
 
 from .exceptions import RemotePicoException
 from .logconfig import LOGGER
-from .commands.compiled import DOWNLOAD_FILE, UPLOAD_FILE
+from .commands.compiled import DOWNLOAD_FILE, UPLOAD_FILE, CREATE_DIR, DELETE_PATH
 
 # Constants for communication patterns
 TERMINATOR = '\r\n'  
@@ -197,9 +197,9 @@ class Pico:
                 raise Exception("No response when expected")
         return None
 
-    def get_file_list(self):
+    def get_file_list(self, path="/"):
         """ Get a list of files stored on the device """
-        string_list = self._communicate('import os; os.listdir()')
+        string_list = self._communicate(f'import os; os.listdir(\'{path}\')')
         
         # Ensure response looks like a list
         if not string_list:
@@ -244,6 +244,16 @@ class Pico:
         """ Run a generic python command """
         return self._communicate(command, block_command)
 
+    def cat_file(self, pico_filename):
+        try:
+            file_data = self._communicate(
+                DOWNLOAD_FILE(pico_filename)
+            )
+        except RemotePicoException as err:
+            LOGGER.error(f"Cat was not successful: {err}")
+        else:
+            print(file_data)
+
     def download_file(self, pico_filename, save_fp: IO[str]):
         """ Download a file from the Pico to the host """
 
@@ -265,15 +275,32 @@ class Pico:
                 normalized_lines.append(line)
             save_fp.write(''.join(normalized_lines))
 
+    def upload_folder(self, folder: str):
+        pass
+
+    def delete_path(self, path: Path, recursive=False):
+        try:
+            result = self._communicate(
+                DELETE_PATH(recursive, str(path))
+            )
+        except RemotePicoException as err:
+            LOGGER.error(f"Removal was not successful: {err}")
+            raise
+        LOGGER.debug(f"Response from delete: {result}")
+
     def create_directory(self, path: Path, overwrite=False):
         if str(path) in self.get_file_list():
             if not overwrite:
                 raise FileExistsError(f"'{path}' already exists on the Pico. Set overwrite=True to overwrite.")
         
-        result = self._communicate(f"import os; os.mkdir('{path}')")
+        try:
+            result = self._communicate(
+                CREATE_DIR(str(path))
+            )
+        except RemotePicoException as err:
+            LOGGER.error(f"Upload was not successful: {err}")
+            raise
         LOGGER.debug(f"Response from mkdir: {result}")
-        if "Traceback" in result:
-            LOGGER.error(f"Pico raised Exception during upload :: {result}")
 
     def upload_file(self, local_fp: IO[str], pico_file_path, overwrite=False):
         """ Upload a file from the host to the Pico """
