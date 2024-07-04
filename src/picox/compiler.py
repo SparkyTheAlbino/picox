@@ -115,6 +115,9 @@ def compile_file_to_command(file_data: Union[IO[bytes], str]) -> str:
         file_data = StringIO(file_data)
     raw_command = file_data.read()
 
+    # sys module required for traceback print
+    raw_command = "import sys\n" + raw_command
+
     raw_command = remove_comments(raw_command)
     raw_command = fix_fstring_braces(raw_command)
     raw_command = fix_lines(raw_command)
@@ -124,7 +127,7 @@ def compile_file_to_command(file_data: Union[IO[bytes], str]) -> str:
     raw_command = raw_command.replace("\'", "\\\\\\\'")
 
     # wrap a try catch with known failure marker
-    raw_command = f"try:\\\\n{raw_command}\\\\nexcept Exception as e:\\\\n    print(f\\\\\\\"{{{{str(e)}}}}{FAILED_MARKER}\\\\\\\")"
+    raw_command = f"try:\\\\n{raw_command}\\\\nexcept Exception as e:\\\\n    sys.print_exception(e)\\\\n    print(f\\\\\\\"{FAILED_MARKER}\\\\\\\")"
 
     # wrap in exec
     raw_command = f"exec(\'{raw_command}\')"
