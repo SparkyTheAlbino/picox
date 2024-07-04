@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from .upy import Pico
+from .exceptions import RemotePicoError
 from .detect import get_all_pico_serial, get_first_pico_serial
 from .logconfig import LOGGER
 
@@ -71,50 +72,33 @@ def get_args():
     
     return args
 
-
-def main():
-    LOGGER.setLevel(logging.INFO)
-    args = get_args()
-
-    if args.verbose:
-        LOGGER.setLevel(logging.DEBUG)
-
-    attach_only = args.command in ["attach"]
-
-    if device := getattr(args, 'device', False):
-        pico = Pico(
-            serial_port=device,
-            skip_coms_test=attach_only, # Skip testing coms if code should be already running
-            skip_stop_exec=attach_only,
-        )
-    else:
-        pico = False
-
+def process_command(pico: Pico, args: argparse.Namespace):
     match args.command:
         case "repl":
             pico.start_repl()
         case "cat":
             try:
                 pico.cat_file(args.file)
-            except FileNotFoundError as err:
-                LOGGER.error(f"File not found {args.file}")
+            except RemotePicoError as err:
                 sys.exit(1)
         case "ls":
-            for file in pico.get_file_list(args.path):
-                print(file) # Print file list to stdout
+            try:
+                file_list = pico.get_file_list(args.path)
+            except RemotePicoError as err:
+                sys.exit(1)
+            for file in file_list:
+                print(file)
         case "rm":
             remote_path = Path(args.path)
             try:
                 pico.delete_path(remote_path, args.recursive)
-            except FileNotFoundError:
-                LOGGER.error(f"File not found {args.path}")
+            except RemotePicoError as err:
                 sys.exit(1)
         case "mkdir":
             remote_path = Path(args.folder_path)
             try:
                 pico.create_directory(remote_path, args.overwrite)
-            except FileExistsError:
-                LOGGER.error(f"Directory already exists {args.folder_path}")
+            except RemotePicoError as err:
                 sys.exit(1)
         case "stop":
             pass # Technically just opening it successfully will stop it
@@ -122,9 +106,8 @@ def main():
             with open(args.read_file, "rb") as read_file:
                 try:
                     pico.upload_file(read_file, args.file, overwrite=args.overwrite)
-                except FileExistsError as err:
-                    LOGGER.error(err)
-                    sys.exit(2)
+                except RemotePicoError as err:
+                    sys.exit(1)
         case "download":
             try:
                 with open(args.save_file, "w") as save_file:
@@ -148,6 +131,29 @@ def main():
                 LOGGER.info("Received KeyboardInterrupt. Exiting...")
         case "reboot":
             pico.send_soft_reboot()
+
+
+def main():
+    LOGGER.setLevel(logging.INFO)
+    args = get_args()
+
+    if args.verbose:
+        LOGGER.setLevel(logging.DEBUG)
+
+    # IF attach command, then set the flag to avoid closing what is already running
+    attach_only = args.command in ["attach"]
+
+    # If we have a 'device' in our command, we need to create a Pico object
+    if device := getattr(args, 'device', False):
+        pico = Pico(
+            serial_port=device,
+            skip_coms_test=attach_only, # Skip testing coms if code should be already running
+            skip_stop_exec=attach_only,
+        )
+    else:
+        pico = False
+
+    process_command(pico, args)
 
 if __name__ == "__main__":
     main()

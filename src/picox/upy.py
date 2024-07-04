@@ -9,9 +9,9 @@ from io import StringIO
 
 import serial
 
-from .exceptions import RemotePicoException
+from .exceptions import RemotePicoError
 from .logconfig import LOGGER
-from .commands.compiled import DOWNLOAD_FILE, UPLOAD_FILE, CREATE_DIR, DELETE_PATH
+from .commands.compiled import DOWNLOAD_FILE, UPLOAD_FILE, CREATE_DIR, LS_DIR, DELETE_ITEM
 
 # Constants for communication patterns
 TERMINATOR = '\r\n'  
@@ -148,8 +148,12 @@ class Pico:
         
         return response[start_index:last_end_index]
 
-    def _clean_response(self, response: str) -> str:
+    def _clean_response(self, response: str, from_failed: bool = False) -> str:
         """Cleans up the response string from a MicroPython device to remove unnecessary prompts and markers."""
+        if from_failed:
+            # This message has a failed marker, lets clean this up so we can extract the payload
+            response = response.replace(FAILED_MARKER, "")
+            response += EOR_MARKER
         response = self._extract_response_payload(response, EOM_MARKER, EOR_MARKER)
         response = response.lstrip()
 
@@ -189,7 +193,8 @@ class Pico:
             if response := self._serial_read().decode():
                 # Did the response show an exception on the Pico?
                 if response.endswith(FAILED_MARKER):
-                    raise RemotePicoException("Detected exception from device", response)
+                    cleaned_response = self._clean_response(response, from_failed=True)
+                    raise RemotePicoError(cleaned_response)
                 
                 # Good response, Get the payload and return it
                 return self._clean_response(response)
@@ -199,13 +204,11 @@ class Pico:
 
     def get_file_list(self, path="/"):
         """ Get a list of files stored on the device """
-        string_list = self._communicate(f'import os; os.listdir(\'{path}\')')
-        
-        # Ensure response looks like a list
-        if not string_list:
-            raise RuntimeError("Empty response from Pico")
-        if string_list[0] != "[" and string_list[-1] != "]":
-            raise RuntimeError(f"Did not get back a list from file listing command :: {string_list}")
+        try:
+            string_list = self._communicate(LS_DIR(path))
+        except RemotePicoError as err:
+            LOGGER.error(f"File list was not successful: {err}")
+            raise
         else:
             return ast.literal_eval(string_list) if string_list else []
 
@@ -249,22 +252,19 @@ class Pico:
             file_data = self._communicate(
                 DOWNLOAD_FILE(pico_filename)
             )
-        except RemotePicoException as err:
-            LOGGER.error(f"Cat was not successful: {err}")
+        except RemotePicoError as err:
+            LOGGER.error(f"cat was not successful: {err}")
+            raise
         else:
             print(file_data)
 
     def download_file(self, pico_filename, save_fp: IO[str]):
         """ Download a file from the Pico to the host """
-
-        if pico_filename not in self.get_file_list():
-            raise FileNotFoundError(f"File '{pico_filename}' does not exist on Pico")
-
         try:
             file_data = self._communicate(
                 DOWNLOAD_FILE(pico_filename)
             )
-        except RemotePicoException as err:
+        except RemotePicoError as err:
             LOGGER.error(f"Upload was not successful: {err}")
         else:
             # Fix line endings to \n and write to file!
@@ -281,33 +281,25 @@ class Pico:
     def delete_path(self, path: Path, recursive=False):
         try:
             result = self._communicate(
-                DELETE_PATH(recursive, str(path))
+                DELETE_ITEM(recursive, str(path))
             )
-        except RemotePicoException as err:
+        except RemotePicoError as err:
             LOGGER.error(f"Removal was not successful: {err}")
             raise
         LOGGER.debug(f"Response from delete: {result}")
 
     def create_directory(self, path: Path, overwrite=False):
-        if str(path) in self.get_file_list():
-            if not overwrite:
-                raise FileExistsError(f"'{path}' already exists on the Pico. Set overwrite=True to overwrite.")
-        
         try:
             result = self._communicate(
-                CREATE_DIR(str(path))
+                CREATE_DIR(overwrite=overwrite, directory=str(path))
             )
-        except RemotePicoException as err:
-            LOGGER.error(f"Upload was not successful: {err}")
+        except RemotePicoError as err:
+            LOGGER.error(f"mkdir was not successful: {err}")
             raise
         LOGGER.debug(f"Response from mkdir: {result}")
 
     def upload_file(self, local_fp: IO[str], pico_file_path, overwrite=False):
         """ Upload a file from the host to the Pico """
-        if pico_file_path in self.get_file_list():
-            if not overwrite:
-                raise FileExistsError(f"File '{pico_file_path}' already exists on the Pico. Set overwrite=True to overwrite.")
-
         # Read the file data from the host
         local_data = local_fp.read()
         if not isinstance(local_data, bytes):
@@ -316,9 +308,10 @@ class Pico:
         # Upload the file to the pico
         try:
             result = self._communicate(
-                UPLOAD_FILE(local_data.hex(), pico_file_path)
+                UPLOAD_FILE(local_data.hex(), pico_file_path, overwrite=overwrite)
             )
-        except RemotePicoException as err:
+            print(result)
+        except RemotePicoError as err:
             LOGGER.error(f"Upload was not successful: {err}")
             raise
         return result
