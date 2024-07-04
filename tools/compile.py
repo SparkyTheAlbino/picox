@@ -1,9 +1,12 @@
 import re
+import ast
+import astor
 import sys
 import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple, List
+
 
 try:
     from picox.compiler import compile_file_to_command
@@ -20,14 +23,29 @@ class CompiledCommand(NamedTuple):
     file_path: Path
 
 
-def extract_parameters(text):
-    pattern = r'\{([^{}]+)\}(?![^{]*\})'
-    return re.findall(pattern, text)
+class FStringRemover(ast.NodeTransformer):
+    def visit_JoinedStr(self, node):
+        """ Replace f-strings with a placeholder """
+        return ast.Constant(value='<f-string removed>')
+
+def remove_fstrings(source_code):
+    tree = ast.parse(source_code)
+    transformer = FStringRemover()
+    modified_tree = transformer.visit(tree)
+
+    # Convert the modified AST back to source code
+    modified_code = astor.to_source(modified_tree)
+    return modified_code
+
+def extract_parameters(source_code):
+    source_code = remove_fstrings(source_code)
+    return re.findall(r'["\']{([^{}]+?)}["\']', source_code)
 
 def compile_file(input_file_path):
     with input_file_path.open() as input_file_fp:
-        command_str = compile_file_to_command(input_file_fp)
-        params = extract_parameters(command_str)
+        source_data = input_file_fp.read()
+        params = extract_parameters(source_data)
+        command_str = compile_file_to_command(source_data)
     return CompiledCommand(command_str, params, input_file_path)
 
 
@@ -50,7 +68,6 @@ if __name__ == "__main__":
         print(f"Could not import picox correctly: {COMPILER_ERROR}")
         print(f"Chances are, you messed up the compiled commands in the package. run this with --generate-stub with the raw_commands directory!")
         sys.exit(2)
-
 
     if not args.file_path:
         print("No path provided")
