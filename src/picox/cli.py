@@ -1,6 +1,7 @@
 import argparse
 import logging
 import sys
+import os
 from pathlib import Path
 
 from .upy import Pico
@@ -50,13 +51,16 @@ def get_args():
     mkdir_parser.add_argument("--overwrite", action="store_true", help="Overwrite the file if it exists")
 
     upload_parser.add_argument("device", help="Serial device")
-    upload_parser.add_argument("read_file", help="File to upload")
+    upload_parser.add_argument("read_file", help="Local file to upload")
     upload_parser.add_argument("file", help="Save name for file to upload")
+    upload_parser.add_argument('-r', '--recursive', action='store_true', help="Upload directory recursively")
     upload_parser.add_argument("--overwrite", action="store_true", help="Overwrite the file if it exists")
 
     download_parser.add_argument("device", help="Serial device")
-    download_parser.add_argument("file", help="File to download")
-    download_parser.add_argument("save_file", help="Location to save to")
+    download_parser.add_argument("file", help="Remote file on device to download")
+    download_parser.add_argument("save_file", help="Local location to save to")
+    download_parser.add_argument('-r', '--recursive', action='store_true', help="Download directory recursively")
+    download_parser.add_argument("--overwrite", action="store_true", help="Overwrite the file if it exists")
 
     exec_parser.add_argument("device", help="Serial device")
     exec_parser.add_argument("file", help="File to execute")
@@ -103,17 +107,54 @@ def process_command(pico: Pico, args: argparse.Namespace):
         case "stop":
             pass # Technically just opening it successfully will stop it
         case "upload":
-            with open(args.read_file, "rb") as read_file:
-                try:
-                    pico.upload_file(read_file, args.file, overwrite=args.overwrite)
-                except RemotePicoError as err:
-                    sys.exit(1)
+            try:
+                is_directory = os.path.isdir(args.read_file)
+            except FileNotFoundError:
+                LOGGER.error(f"File/Folder not found: {args.read_file}")
+                sys.exit(1)
+
+            if is_directory and not args.recursive:
+                raise ValueError("Directory upload requires -r/--recursive flag")
+            
+            # TODO handle recursive upload
+            if is_directory:
+                pico.upload_folder(args.read_file, args.file, overwrite=args.overwrite)
+            else:
+                with open(args.read_file, "rb") as read_file:
+                    try:
+                        pico.upload_file(read_file, args.file, overwrite=args.overwrite)
+                    except RemotePicoError as err:
+                        sys.exit(1)
         case "download":
+            # Check if file/folder to download to exists and not in override mode
+            if not args.override and os.path.exists(args.save_file):
+                LOGGER.error(f"File/Folder already exists: {args.save_file}")
+                sys.exit(1)
+            
+            # Directory download requires recursive flag
+            if os.path.isdir(args.save_file) and not args.recursive:
+                raise ValueError("Directory download requires -r/--recursive flag")
+            
+            for root, dirs, files in os.walk(source_folder):
+                for file in files:
+                    source_path = os.path.join(root, file)
+                    destination_path = os.path.join(destination_folder, os.path.relpath(source_path, source_folder))
+                    
+                    # Create directories if they don't exist
+                    destination_dir = os.path.dirname(destination_path)
+                    if not os.path.exists(destination_dir):
+                        os.makedirs(destination_dir)
+                    
+                    # Write the file
+                    with open(destination_path, 'w') as destination_file:
+                        with open(source_path, 'r') as source_file:
+                            destination_file.write(source_file.read())
+
+            #TODO handle recursive download
             try:
                 with open(args.save_file, "w") as save_file:
                     pico.download_file(args.file, save_file)
-            except FileNotFoundError as err:
-                LOGGER.error(err)
+            except RemotePicoError as err:
                 sys.exit(1)
         case "exec":
             LOGGER.debug(f"Executing {args.file}")
